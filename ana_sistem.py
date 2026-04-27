@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import pandas_ta as ta
+import os
 import smtplib
 import warnings
 import torch
@@ -17,7 +18,7 @@ warnings.filterwarnings('ignore')
 
 # ─── Ayarlar ───────────────────────────────────────────
 GMAIL_ADRES  = "tahir.aytekin72@gmail.com"
-GMAIL_SIFRE  = "esky lnix cnil sfke"
+GMAIL_SIFRE = os.getenv("GMAIL_SIFRE")
 ALICI_ADRES  = "tahir.aytekin72@gmail.com"
 
 HISSELER = [
