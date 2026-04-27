@@ -431,10 +431,13 @@ OZELLIKLER = [
 ]
 
 def model_egit(sembol):
+    print(f"    [{sembol}] veri indiriliyor...")
     df = yf.Ticker(sembol).history(period="5y", interval="1d")
+    print(f"    [{sembol}] {len(df)} satır veri alındı, özellikler hesaplanıyor...")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
     df = ozellikler_ekle(df)
+    print(f"    [{sembol}] model eğitimi başlıyor...")
     df['Gelecek'] = df['Close'].shift(-3) / df['Close'] - 1
     df['Hedef']   = df['Gelecek'].apply(
         lambda g: 2 if g >= 0.015 else (0 if g <= -0.015 else 1))
