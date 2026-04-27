@@ -8,8 +8,10 @@ import os
 import threading
 import time
 from datetime import datetime
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -429,7 +431,7 @@ OZELLIKLER = [
 ]
 
 def model_egit(sembol):
-    df = yf.Ticker(sembol).history(period="1y", interval="1d")
+    df = yf.Ticker(sembol).history(period="5y", interval="1d")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
     df = ozellikler_ekle(df)
@@ -442,8 +444,16 @@ def model_egit(sembol):
     bolme  = int(len(X) * 0.8)
     scaler = StandardScaler()
     X_e    = scaler.fit_transform(X[:bolme])
-    model  = RandomForestClassifier(n_estimators=20, max_depth=4,
-                 random_state=42, class_weight='balanced', n_jobs=1)
+    model  = VotingClassifier(estimators=[
+        ('rf',  RandomForestClassifier(n_estimators=100, max_depth=6,
+                 random_state=42, class_weight='balanced')),
+        ('xgb', XGBClassifier(n_estimators=100, max_depth=5,
+                 learning_rate=0.05, random_state=42,
+                 eval_metric='mlogloss', verbosity=0)),
+        ('lgbm',LGBMClassifier(n_estimators=100, max_depth=5,
+                 learning_rate=0.05, random_state=42,
+                 class_weight='balanced', verbose=-1))
+    ], voting='soft')
     model.fit(X_e, y[:bolme])
     return model, scaler, df
 
