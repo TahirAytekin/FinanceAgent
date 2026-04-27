@@ -4,7 +4,8 @@ import numpy as np
 import yfinance as yf
 import pandas_ta as ta
 import math
-import threading 
+import os
+import threading
 import time
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
@@ -19,7 +20,8 @@ HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
               "EKGYO.IS", "PGSUS.IS", "TCELL.IS",
               "SISE.IS",  "FROTO.IS"]
 GUNCELLEME = 300
-PORT       = 5000
+PORT       = int(os.environ.get('PORT', 5000))
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # ───────────────────────────────────────────────────────
 
 app = Flask(__name__)
@@ -497,7 +499,7 @@ def grafik_verisi_hazirla(sembol, df):
 
 def track_record_oku():
     try:
-        df = pd.read_csv("track_record.csv", encoding='utf-8-sig')
+        df = pd.read_csv(os.path.join(BASE_DIR, "track_record.csv"), encoding='utf-8-sig')
         tamamlanan = df[df['sonuc'].isin(['KAZANDI','KAYBETTI'])]
         if len(tamamlanan) == 0:
             return {'toplam':len(df),'tamamlanan':0,'kazanan':0,
@@ -593,10 +595,11 @@ def api_veri():
     'track_record': tr_data,
 }
     return jsonify(json_temizle(data))
-if __name__ == '__main__':
-    thread = threading.Thread(target=sistem_baslat, daemon=True)
-    thread.start()
+# Modeller arka planda eğitilmeye başlar (gunicorn ile de çalışır)
+_thread = threading.Thread(target=sistem_baslat, daemon=True)
+_thread.start()
 
+if __name__ == '__main__':
     print("\n" + "="*55)
     print("  BIST TRADING DASHBOARD BAŞLATILIYOR")
     print(f"  Tarayıcıda aç: http://localhost:{PORT}")

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: finance-agent
+    env: python
+    region: frankfurt
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.frontend.web_dashboard:app --timeout 300 --workers 1 --threads 2
+    envVars:
+      - key: GMAIL_SIFRE
+        sync: false
+      - key: PYTHONPATH
+        value: .
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /

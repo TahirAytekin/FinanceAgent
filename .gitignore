@@ -6,3 +6,4 @@ __pycache__/
 *.joblib
 *.zip
 .DS_Store
+outputs/
