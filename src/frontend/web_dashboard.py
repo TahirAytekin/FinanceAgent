@@ -431,7 +431,7 @@ OZELLIKLER = [
 ]
 
 def model_egit(sembol):
-    df = yf.Ticker(sembol).history(period="5y", interval="1d")
+    df = yf.Ticker(sembol).history(period="2y", interval="1d")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
     df = ozellikler_ekle(df)
@@ -445,13 +445,13 @@ def model_egit(sembol):
     scaler = StandardScaler()
     X_e    = scaler.fit_transform(X[:bolme])
     model  = VotingClassifier(estimators=[
-        ('rf',  RandomForestClassifier(n_estimators=100, max_depth=6,
-                 random_state=42, class_weight='balanced')),
-        ('xgb', XGBClassifier(n_estimators=100, max_depth=5,
-                 learning_rate=0.05, random_state=42,
+        ('rf',  RandomForestClassifier(n_estimators=50, max_depth=5,
+                 random_state=42, class_weight='balanced', n_jobs=1)),
+        ('xgb', XGBClassifier(n_estimators=50, max_depth=4,
+                 learning_rate=0.1, random_state=42,
                  eval_metric='mlogloss', verbosity=0)),
-        ('lgbm',LGBMClassifier(n_estimators=100, max_depth=5,
-                 learning_rate=0.05, random_state=42,
+        ('lgbm',LGBMClassifier(n_estimators=50, max_depth=4,
+                 learning_rate=0.1, random_state=42,
                  class_weight='balanced', verbose=-1))
     ], voting='soft')
     model.fit(X_e, y[:bolme])
