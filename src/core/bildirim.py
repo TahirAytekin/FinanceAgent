@@ -1,4 +1,5 @@
 import smtplib
+import os
 import yfinance as yf
 import pandas_ta as ta
 import numpy as np
@@ -9,7 +10,7 @@ from datetime import datetime
 # ─── Ayarlar ───────────────────────────────────────────
 HISSELER     = ["THYAO.IS", "EREGL.IS", "ASELS.IS"]  # İstediğin hisseleri ekle
 GMAIL_ADRES  = "tahir.aytekin72@gmail.com"       # Kendi Gmail adresin
-GMAIL_SIFRE  = "esky lnix cnil sfke"   # Az önce aldığın uygulama şifresi
+GMAIL_SIFRE = os.getenv("GMAIL_SIFRE")   # Az önce aldığın uygulama şifresi
 ALICI_ADRES  = "tahir.aytekin72@gmail.com"       # Bildirimin gideceği adres (aynı olabilir)
 MIN_GUC      = 30                       # Sadece bu güçten yüksek sinyaller gönderilsin
 # ───────────────────────────────────────────────────────
