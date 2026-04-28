@@ -581,23 +581,27 @@ def json_temizle(data):
         return data
     else:
         return data
-@app.route('/api/veri')
+_egitim_basladi = False
 
+@app.route('/api/veri')
 def api_veri():
+    global _egitim_basladi
+    if not _egitim_basladi:
+        _egitim_basladi = True
+        threading.Thread(target=sistem_baslat, daemon=True).start()
+        print("İlk istek alındı — model eğitimi başlatıldı.")
+
     tr_data = track_record_oku()
     data = {
-    'hazir': SISTEM_VERISI['hazir'],
-    'sinyaller': SISTEM_VERISI['sinyaller'],
-    'piyasa': SISTEM_VERISI['piyasa'],
-    'grafik_verisi': SISTEM_VERISI['grafik_verisi'],
-    'borsa_acik': borsa_acik_mi(),
-    'son_guncelleme': SISTEM_VERISI['son_guncelleme'],
-    'track_record': tr_data,
-}
+        'hazir': SISTEM_VERISI['hazir'],
+        'sinyaller': SISTEM_VERISI['sinyaller'],
+        'piyasa': SISTEM_VERISI['piyasa'],
+        'grafik_verisi': SISTEM_VERISI['grafik_verisi'],
+        'borsa_acik': borsa_acik_mi(),
+        'son_guncelleme': SISTEM_VERISI['son_guncelleme'],
+        'track_record': tr_data,
+    }
     return jsonify(json_temizle(data))
-# Modeller arka planda eğitilmeye başlar (gunicorn ile de çalışır)
-_thread = threading.Thread(target=sistem_baslat, daemon=True)
-_thread.start()
 
 if __name__ == '__main__':
     print("\n" + "="*55)
