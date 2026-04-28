@@ -530,6 +530,7 @@ def sistem_baslat():
             print(f"  {s} ✅")
         except Exception as e:
             print(f"  {s} ❌ {e}")
+        time.sleep(3)
 
     print("Modeller hazır!\n")
     SISTEM_VERISI['hazir'] = True
