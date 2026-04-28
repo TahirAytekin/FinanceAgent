@@ -6,7 +6,6 @@ import pandas_ta as ta
 import math
 import os
 import threading
-import concurrent.futures
 import time
 from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
@@ -431,22 +430,11 @@ OZELLIKLER = [
     '52H_Yuzde','RSI_Trend','Hacim_Fiyat'
 ]
 
-def _veri_indir(sembol):
-    return yf.Ticker(sembol).history(period="1y", interval="1d")
-
 def model_egit(sembol):
-    print(f"    [{sembol}] veri indiriliyor...")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        future = ex.submit(_veri_indir, sembol)
-        try:
-            df = future.result(timeout=60)
-        except concurrent.futures.TimeoutError:
-            raise Exception(f"{sembol} veri indirme 60s'de zaman aşımına uğradı")
-    print(f"    [{sembol}] {len(df)} satır veri alındı, özellikler hesaplanıyor...")
+    df = yf.Ticker(sembol).history(period="5y", interval="1d")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
     df = ozellikler_ekle(df)
-    print(f"    [{sembol}] model eğitimi başlıyor...")
     df['Gelecek'] = df['Close'].shift(-3) / df['Close'] - 1
     df['Hedef']   = df['Gelecek'].apply(
         lambda g: 2 if g >= 0.015 else (0 if g <= -0.015 else 1))
