@@ -432,7 +432,7 @@ OZELLIKLER = [
 ]
 
 def _veri_indir(sembol):
-    return yf.Ticker(sembol).history(period="5y", interval="1d")
+    return yf.Ticker(sembol).history(period="1y", interval="1d")
 
 def model_egit(sembol):
     print(f"    [{sembol}] veri indiriliyor...")
