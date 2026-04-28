@@ -523,13 +523,17 @@ def track_record_oku():
 def sistem_baslat():
     print("\nModeller eğitiliyor...")
     for s in HISSELER:
-        try:
-            print(f"  {s} eğitiliyor...")
-            model, scaler, df = model_egit(s)
-            SISTEM_VERISI['modeller'][s] = (model, scaler, df)
-            print(f"  {s} ✅")
-        except Exception as e:
-            print(f"  {s} ❌ {e}")
+        for deneme in range(3):
+            try:
+                print(f"  {s} eğitiliyor... (deneme {deneme+1})")
+                model, scaler, df = model_egit(s)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df)
+                print(f"  {s} ✅")
+                break
+            except Exception as e:
+                print(f"  {s} ❌ deneme {deneme+1}: {e}")
+                if deneme < 2:
+                    time.sleep(15)
         time.sleep(3)
 
     print("Modeller hazır!\n")
