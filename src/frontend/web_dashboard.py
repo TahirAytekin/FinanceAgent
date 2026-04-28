@@ -235,7 +235,7 @@ function sayfaGuncelle(data) {
         <td>%${gP}<div class="guven-bar">
           <div class="guven-bar-ic" style="width:${gP}%"></div></div></td>
         <td class="green">${s.hedef ? Number(s.hedef).toFixed(2)+' ₺' : '—'}</td>
-        <td class="red">${s.stop ? Number(s.stop).toFixed(2)+' ₺' : '—'}</td>
+        <td class="${s.karar==='SAT' ? 'green' : 'red'}">${s.stop ? Number(s.stop).toFixed(2)+' ₺' : '—'}</td>
       </tr>`;
     });
     tablo += '</tbody></table>';
@@ -472,6 +472,15 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
         if guven < esik:
             karar = "BEKLE"
         atr = guvenli_sayi(df['ATR'].iloc[-1])
+        if karar == "AL":
+            hedef = round(guvenli_sayi(son_fiyat + atr * 2.5), 2)
+            stop  = round(guvenli_sayi(son_fiyat - atr * 1.5), 2)
+        elif karar == "SAT":
+            hedef = round(guvenli_sayi(son_fiyat - atr * 2.5), 2)
+            stop  = round(guvenli_sayi(son_fiyat + atr * 1.5), 2)
+        else:
+            hedef = None
+            stop  = None
         return {
     'sembol' : sembol,
     'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
@@ -479,8 +488,8 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
     'rsi'    : round(guvenli_sayi(df['RSI'].iloc[-1]), 1),
     'karar'  : karar,
     'guven'  : round(guvenli_sayi(guven), 3),
-    'hedef'  : round(guvenli_sayi(son_fiyat + atr*2.5), 2) if karar=="AL" else None,
-    'stop'   : round(guvenli_sayi(son_fiyat - atr*1.5), 2) if karar=="AL" else None,
+    'hedef'  : hedef,
+    'stop'   : stop,
 }
     except:
         return None
