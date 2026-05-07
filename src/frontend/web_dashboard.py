@@ -283,7 +283,7 @@ function sayfaGuncelle(data) {
           <td><span class="pill ${kC}">${s.karar}</span></td>
           <td>${s.fiyat_giris ? parseFloat(s.fiyat_giris).toFixed(2)+' ₺' : '—'}</td>
           <td>${s.fiyat_cikis ? parseFloat(s.fiyat_cikis).toFixed(2)+' ₺' : '—'}</td>
-          <td class="${s.kar_zarar&&parseFloat(s.kar_zarar)>=0?'green':'red'}">${kStr}</td>
+          <td class="${s.kar_zarar ? (parseFloat(s.kar_zarar)>=0?'green':'red') : ''}">${kStr}</td>
           <td class="${sR}" style="font-weight:600">${s.sonuc||'Bekliyor'}</td>
         </tr>`;
       });
