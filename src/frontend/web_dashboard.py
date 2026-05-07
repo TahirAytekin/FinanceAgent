@@ -518,9 +518,9 @@ def track_record_oku():
         basari  = kazanan / len(tamamlanan) * 100
         ort_kar = tamamlanan['kar_zarar'].astype(float).mean()
         bekleyen       = df[~df['sonuc'].isin(['KAZANDI', 'KAYBETTI'])]
-        son_tamamlanan = tamamlanan.tail(5).iloc[::-1]
-        son_bekleyen   = bekleyen.tail(5).iloc[::-1]
-        son_sinyaller  = pd.concat([son_tamamlanan, son_bekleyen]).to_dict('records')
+        son_tamamlanan = tamamlanan.iloc[::-1]
+        son_bekleyen   = bekleyen.tail(10).iloc[::-1]
+        son_sinyaller  = pd.concat([son_bekleyen, son_tamamlanan]).to_dict('records')
         return {
             'toplam'      : len(df),
             'tamamlanan'  : len(tamamlanan),
