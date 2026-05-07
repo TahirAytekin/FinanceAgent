@@ -517,13 +517,17 @@ def track_record_oku():
         kazanan = len(tamamlanan[tamamlanan['sonuc']=='KAZANDI'])
         basari  = kazanan / len(tamamlanan) * 100
         ort_kar = tamamlanan['kar_zarar'].astype(float).mean()
+        bekleyen       = df[~df['sonuc'].isin(['KAZANDI', 'KAYBETTI'])]
+        son_tamamlanan = tamamlanan.tail(5).iloc[::-1]
+        son_bekleyen   = bekleyen.tail(5).iloc[::-1]
+        son_sinyaller  = pd.concat([son_tamamlanan, son_bekleyen]).to_dict('records')
         return {
             'toplam'      : len(df),
             'tamamlanan'  : len(tamamlanan),
             'kazanan'     : kazanan,
             'basari'      : round(basari, 1),
             'ort_kar'     : round(float(ort_kar), 2),
-            'son_sinyaller': df.tail(10).iloc[::-1].to_dict('records'),
+            'son_sinyaller': son_sinyaller,
         }
     except:
         return {'toplam':0,'tamamlanan':0,'kazanan':0,
