@@ -400,7 +400,8 @@ def track_record_guncelle():
     Önce güncellenecek sembolleri toplar, tek seferde fiyat çeker.
     """
     try:
-        df = pd.read_csv("track_record.csv", encoding='utf-8-sig')
+        df = pd.read_csv("track_record.csv", encoding='utf-8-sig',
+                         dtype={'fiyat_cikis': object, 'kar_zarar': object, 'sonuc': object})
 
         # Güncellenecek satırları ve gereken sembolleri bul
         guncellenecek = []
@@ -440,13 +441,15 @@ def track_record_guncelle():
         guncellendi = 0
         for idx in guncellenecek:
             row    = df.loc[idx]
-            guncel = fiyatlar.get(row['sembol'])
+            sembol = str(row['sembol']).strip()
+            guncel = fiyatlar.get(sembol)
             if not guncel:
+                print(f"    Fiyat bulunamadı: '{sembol}'")
                 continue
             try:
                 fiyat_giris = float(row['fiyat_giris'])
                 getiri      = (guncel - fiyat_giris) / fiyat_giris * 100
-                if row['karar'] == 'AL':
+                if str(row['karar']).strip() == 'AL':
                     kar_zarar = getiri
                     sonuc     = "KAZANDI" if getiri > 0 else "KAYBETTI"
                 else:
