@@ -391,6 +391,12 @@ def track_record_kaydet(sinyaller):
     except:
         df_toplam = df_yeni
 
+    # Aynı gün aynı hisse için tekrar kayıt oluşmasını engelle
+    df_toplam['tarih'] = pd.to_datetime(df_toplam['zaman'], dayfirst=True).dt.date
+    df_toplam = df_toplam.sort_values('zaman')
+    df_toplam = df_toplam.drop_duplicates(subset=['sembol', 'tarih'], keep='last')
+    df_toplam = df_toplam.drop(columns=['tarih'])
+
     df_toplam.to_csv("track_record.csv", index=False, encoding='utf-8-sig')
     print(f"    {len(kayitlar)} sinyal track_record.csv'ye kaydedildi.")
 
