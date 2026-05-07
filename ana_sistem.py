@@ -425,7 +425,13 @@ def track_record_guncelle():
         for s in semboller:
             try:
                 print(f"    {s} fiyatı çekiliyor...")
-                fiyatlar[s] = yf.Ticker(s).fast_info.last_price
+                hist  = yf.Ticker(s).history(period='2d', interval='1d')
+                price = float(hist['Close'].iloc[-1]) if not hist.empty else None
+                if price:
+                    fiyatlar[s] = price
+                    print(f"    {s} = {price:.2f}")
+                else:
+                    print(f"    {s} fiyat alınamadı")
                 time.sleep(2)
             except Exception as e:
                 print(f"    {s} fiyat hatası: {e}")
