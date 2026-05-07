@@ -3,6 +3,13 @@ import numpy as np
 import yfinance as yf
 import pandas_ta as ta
 import os
+import time
+
+# --- EKSİK OLAN KRİTİK KISIM BURASI ---
+from dotenv import load_dotenv
+load_dotenv() # Bu komut .env dosyasındaki şifreyi sisteme yükler
+# --------------------------------------
+
 import smtplib
 import warnings
 import torch
@@ -390,42 +397,59 @@ def track_record_kaydet(sinyaller):
 def track_record_guncelle():
     """
     Kaydedilen sinyallerin sonuçlarını güncelle.
-    3 gün önceki sinyaller için güncel fiyatı çek,
-    kar/zarar hesapla.
+    Önce güncellenecek sembolleri toplar, tek seferde fiyat çeker.
     """
     try:
         df = pd.read_csv("track_record.csv", encoding='utf-8-sig')
-        guncellendi = 0
 
+        # Güncellenecek satırları ve gereken sembolleri bul
+        guncellenecek = []
         for idx, row in df.iterrows():
-            if row['sonuc'] != '' or row['karar'] == 'BEKLE':
+            sonuc_val = str(row['sonuc']) if pd.notna(row['sonuc']) else ''
+            if sonuc_val != '' or row['karar'] == 'BEKLE':
+                continue
+            try:
+                zaman_giris = datetime.strptime(str(row['zaman']), "%d.%m.%Y %H:%M")
+                if (datetime.now() - zaman_giris).days < 3:
+                    continue
+                guncellenecek.append(idx)
+            except:
                 continue
 
+        if not guncellenecek:
+            return
+
+        # Her sembol için fiyatı bir kez çek
+        semboller = df.loc[guncellenecek, 'sembol'].unique()
+        fiyatlar  = {}
+        for s in semboller:
             try:
-                zaman_giris = datetime.strptime(
-                    str(row['zaman']), "%d.%m.%Y %H:%M")
-                gun_fark    = (datetime.now() - zaman_giris).days
+                print(f"    {s} fiyatı çekiliyor...")
+                fiyatlar[s] = yf.Ticker(s).fast_info.last_price
+                time.sleep(2)
+            except Exception as e:
+                print(f"    {s} fiyat hatası: {e}")
 
-                if gun_fark < 3:
-                    continue
-
-                ticker      = yf.Ticker(row['sembol'])
-                guncel      = ticker.fast_info.last_price
+        # Satırları güncelle
+        guncellendi = 0
+        for idx in guncellenecek:
+            row    = df.loc[idx]
+            guncel = fiyatlar.get(row['sembol'])
+            if not guncel:
+                continue
+            try:
                 fiyat_giris = float(row['fiyat_giris'])
                 getiri      = (guncel - fiyat_giris) / fiyat_giris * 100
-
                 if row['karar'] == 'AL':
                     kar_zarar = getiri
                     sonuc     = "KAZANDI" if getiri > 0 else "KAYBETTI"
                 else:
                     kar_zarar = -getiri
                     sonuc     = "KAZANDI" if getiri < 0 else "KAYBETTI"
-
                 df.at[idx, 'fiyat_cikis'] = round(guncel, 2)
                 df.at[idx, 'kar_zarar']   = round(kar_zarar, 2)
                 df.at[idx, 'sonuc']       = sonuc
                 guncellendi += 1
-
             except:
                 continue
 
@@ -433,8 +457,8 @@ def track_record_guncelle():
         if guncellendi > 0:
             print(f"    {guncellendi} sinyal sonucu güncellendi.")
 
-    except:
-        pass
+    except Exception as e:
+        print(f"    Track record güncelleme hatası: {e}")
 
 def track_record_ozet():
     """Track record istatistiklerini hesapla"""
