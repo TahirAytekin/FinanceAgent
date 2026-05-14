@@ -517,10 +517,11 @@ def track_record_oku():
         kazanan = len(tamamlanan[tamamlanan['sonuc']=='KAZANDI'])
         basari  = kazanan / len(tamamlanan) * 100
         ort_kar = tamamlanan['kar_zarar'].astype(float).mean()
-        bekleyen       = df[~df['sonuc'].isin(['KAZANDI', 'KAYBETTI'])]
-        son_tamamlanan = tamamlanan.iloc[::-1]
-        son_bekleyen   = bekleyen.tail(10).iloc[::-1]
-        son_sinyaller  = pd.concat([son_bekleyen, son_tamamlanan]).to_dict('records')
+        # Her hisse için sadece en son kaydı göster
+        son_sinyaller = (df.sort_values('zaman')
+                           .groupby('sembol', as_index=False).last()
+                           .sort_values('zaman', ascending=False)
+                           .to_dict('records'))
         return {
             'toplam'      : len(df),
             'tamamlanan'  : len(tamamlanan),
@@ -562,7 +563,15 @@ def sistem_baslat():
                 sinyal = sinyal_uret(s, model, scaler, df, carpani)
                 if sinyal:
                     sinyaller.append(sinyal)
-                grafik_v[s] = grafik_verisi_hazirla(s, df)
+                try:
+                    df_c = yf.Ticker(s).history(period='3mo', interval='1d')
+                    df_c = df_c[['Open','High','Low','Close','Volume']]
+                    df_c.index = df_c.index.tz_localize(None)
+                    df_c['MA20'] = ta.sma(df_c['Close'], length=20)
+                    df_c['MA50'] = ta.sma(df_c['Close'], length=50)
+                    grafik_v[s] = grafik_verisi_hazirla(s, df_c)
+                except:
+                    grafik_v[s] = grafik_verisi_hazirla(s, df)
 
             SISTEM_VERISI['sinyaller']      = sinyaller
             SISTEM_VERISI['piyasa']         = piyasa
