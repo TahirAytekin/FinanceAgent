@@ -1,5 +1,7 @@
 import smtplib
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import yfinance as yf
 import pandas_ta as ta
 import numpy as np

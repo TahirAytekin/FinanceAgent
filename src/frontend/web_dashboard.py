@@ -14,6 +14,10 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 import warnings
 warnings.filterwarnings('ignore')
+try:
+    import feedparser as _feedparser
+except ImportError:
+    _feedparser = None
 
 # ─── Ayarlar ───────────────────────────────────────────
 HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
@@ -33,6 +37,8 @@ SISTEM_VERISI = {
     'modeller'      : {},
     'grafik_verisi' : {},
     'hazir'         : False,
+    'kenar'         : {'kripto':[], 'doviz':[], 'emtia':[]},
+    'haberler'      : [],
 }
 
 HTML = '''<!DOCTYPE html>
@@ -40,678 +46,589 @@ HTML = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BIST Trading Dashboard</title>
+<title>LIDYA — Borsa Analiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-         background:#0f172a; color:#e2e8f0; min-height:100vh; }
-  .header { background:#1e293b; border-bottom:1px solid #334155;
-            padding:13px 20px; display:flex; align-items:center;
-            justify-content:space-between; position:sticky; top:0; z-index:100; }
-  .header h1 { font-size:17px; font-weight:700; color:#f1f5f9; }
-  .badge { background:#22c55e22; border:1px solid #22c55e44; color:#22c55e;
-           padding:4px 10px; border-radius:20px; font-size:12px; }
-  .badge.kapali { background:#ef444422; border-color:#ef444444; color:#ef4444; }
-  .tab-nav { background:#1e293b; border-bottom:1px solid #334155;
-             display:flex; padding:0 20px; overflow-x:auto; }
-  .tab-nav::-webkit-scrollbar { display:none; }
-  .tab-btn { padding:13px 18px; border:none; background:none; color:#64748b;
-             cursor:pointer; font-size:13px; font-weight:500;
-             border-bottom:2px solid transparent; white-space:nowrap; transition:all .2s; }
-  .tab-btn:hover { color:#94a3b8; }
-  .tab-btn.active { color:#3b82f6; border-bottom-color:#3b82f6; }
-  .tab-pane { display:none; }
-  .tab-pane.active { display:block; }
-  .container { padding:18px 20px; max-width:1400px; margin:0 auto; }
-  .card { background:#1e293b; border:1px solid #334155; border-radius:12px;
-          padding:18px; margin-bottom:18px; }
-  .card-title { font-size:12px; color:#94a3b8; text-transform:uppercase;
-                letter-spacing:.05em; margin-bottom:14px; }
-  .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
-  .stat-card { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px; }
-  .stat-head { display:flex; justify-content:space-between; align-items:flex-start;
-               margin-bottom:10px; }
-  .stat-label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
-  .stat-icon { font-size:18px; }
-  .stat-value { font-size:24px; font-weight:700; color:#f1f5f9; line-height:1.1; }
-  .stat-sub { font-size:11px; color:#64748b; margin-top:5px; }
-  .pill { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
-  .pill.al   { background:#22c55e22; color:#22c55e; border:1px solid #22c55e44; }
-  .pill.sat  { background:#ef444422; color:#ef4444; border:1px solid #ef444444; }
-  .pill.bekle{ background:#f59e0b22; color:#f59e0b; border:1px solid #f59e0b44; }
-  .rejim-badge { display:inline-block; padding:5px 14px; border-radius:8px; font-weight:600; font-size:14px; }
-  .rejim-boga  { background:#22c55e22; color:#22c55e; }
-  .rejim-ayi   { background:#ef444422; color:#ef4444; }
-  .rejim-yatay { background:#f59e0b22; color:#f59e0b; }
-  .sektor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .sektor-kart { background:#0f172a; border:1px solid #334155; border-radius:10px;
-                 padding:14px; text-align:center; transition:border-color .2s; }
-  .sektor-kart:hover { border-color:#3b82f655; }
-  .sektor-icon { font-size:22px; margin-bottom:6px; }
-  .sektor-name { font-size:11px; color:#64748b; margin-bottom:4px; }
-  .sektor-val  { font-size:17px; font-weight:700; }
-  .sektor-durum{ font-size:11px; color:#64748b; margin-top:3px; }
-  .tablo { width:100%; border-collapse:collapse; font-size:13px; }
-  .tablo th { text-align:left; padding:9px 11px; color:#64748b; font-size:11px;
-              text-transform:uppercase; border-bottom:1px solid #334155; white-space:nowrap; }
-  .tablo td { padding:10px 11px; border-bottom:1px solid #1e293b; }
-  .tablo tr.al-row td { background:#22c55e08; }
-  .tablo tr.sat-row td { background:#ef444408; }
-  .tablo tr.bekle-row td { background:#f59e0b08; }
-  .tablo tr:hover td { filter:brightness(1.2); }
-  .guven-bar { background:#334155; border-radius:3px; height:4px; margin-top:4px; width:72px; }
-  .guven-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#3b82f6,#22c55e); }
-  .chart-ctrl { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
-  .sel { background:#0f172a; color:#e2e8f0; border:1px solid #334155;
-         padding:6px 12px; border-radius:6px; font-size:13px; cursor:pointer; outline:none; }
-  .period-btn { background:#0f172a; border:1px solid #334155; color:#94a3b8;
-                padding:5px 13px; border-radius:6px; cursor:pointer; font-size:12px; transition:all .2s; }
-  .period-btn.active { background:#3b82f622; border-color:#3b82f6; color:#3b82f6; }
-  .period-btn:hover { border-color:#3b82f677; }
-  .tr-stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
-  .tr-stat { background:#0f172a; border:1px solid #334155; border-radius:10px;
-             padding:14px; text-align:center; }
-  .tr-stat-label { font-size:11px; color:#64748b; text-transform:uppercase; margin-bottom:7px; }
-  .tr-stat-value { font-size:22px; font-weight:700; }
-  .p-form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-  .p-input { background:#0f172a; border:1px solid #334155; color:#e2e8f0;
-             padding:8px 12px; border-radius:8px; font-size:13px; outline:none;
-             flex:1; min-width:110px; }
-  .p-input:focus { border-color:#3b82f6; }
-  .btn-add { background:#3b82f6; color:#fff; border:none; padding:8px 18px;
-             border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; white-space:nowrap; }
-  .btn-add:hover { background:#2563eb; }
-  .btn-del { background:#ef444422; color:#ef4444; border:1px solid #ef444444;
-             padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; }
-  .btn-del:hover { background:#ef444433; }
-  .alarm-badge { display:inline-block; padding:3px 8px; border-radius:12px; font-size:11px; font-weight:600;
-                 background:#f59e0b22; color:#f59e0b; border:1px solid #f59e0b33; }
-  .alarm-hit   { background:#22c55e22; color:#22c55e; border-color:#22c55e33; }
-  .empty-state { text-align:center; padding:32px; color:#475569; font-size:13px; }
-  .green { color:#22c55e; } .red { color:#ef4444; } .yellow { color:#f59e0b; } .blue { color:#3b82f6; }
-  @media (max-width:768px) {
-    .stat-grid, .tr-stat-grid { grid-template-columns:repeat(2,1fr); }
-    .sektor-grid { grid-template-columns:repeat(2,1fr); }
-    .tablo th:nth-child(n+6), .tablo td:nth-child(n+6) { display:none; }
-    .container { padding:12px; }
-  }
-  @media (max-width:480px) {
-    .stat-value { font-size:20px; }
-    .tr-stat-value { font-size:18px; }
-  }
+:root{--bg:#0c0a17;--sf:#110e1f;--card:#17142b;--bd:#2e2a48;--tx:#ddd6f3;--mu:#6b6488;--ac:#a78bfa;--gr:#22c55e;--re:#ef4444;--ye:#f59e0b;--ch:#07050e;--cg:#1c1830;--cf:#5e5a7a;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
+.hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
+.brand{font-family:'Cinzel',serif;font-size:22px;font-weight:900;letter-spacing:5px;color:var(--ac);text-transform:uppercase;text-shadow:0 0 28px rgba(167,139,250,.4);}
+.brand-sub{font-size:9px;color:var(--mu);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.badge{background:#22c55e14;border:1px solid #22c55e28;color:var(--gr);padding:3px 10px;border-radius:20px;font-size:11px;}
+.badge.kapali{background:#ef444414;border-color:#ef444428;color:var(--re);}
+.tnav{background:var(--sf);border-bottom:1px solid var(--bd);display:flex;padding:0 20px;overflow-x:auto;position:sticky;top:52px;z-index:100;}
+.tnav::-webkit-scrollbar{display:none;}
+.tb{padding:11px 18px;border:none;background:none;color:var(--mu);cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s;}
+.tb:hover{color:var(--tx);}
+.tb.active{color:var(--ac);border-bottom-color:var(--ac);}
+.tp{display:none;} .tp.active{display:block;}
+.lay{display:flex;min-height:calc(100vh - 88px);}
+.sb{width:228px;min-width:228px;background:var(--sf);overflow-y:auto;height:calc(100vh - 88px);position:sticky;top:88px;flex-shrink:0;}
+.sb-l{border-right:1px solid var(--bd);}
+.sb-r{border-left:1px solid var(--bd);}
+.sb::-webkit-scrollbar{width:3px;}.sb::-webkit-scrollbar-thumb{background:var(--bd);}
+.main{flex:1;min-width:0;}
+.sbt{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.1em;padding:11px 12px 7px;border-bottom:1px solid var(--bd);}
+.sbi{padding:8px 12px;border-bottom:1px solid rgba(46,42,72,.35);transition:background .15s;}
+.sbi:hover{background:var(--card);}
+.prow{display:flex;justify-content:space-between;align-items:center;}
+.pname{font-size:11px;color:var(--mu);}
+.pval{font-size:13px;font-weight:600;color:var(--tx);}
+.pchg{font-size:11px;margin-top:1px;text-align:right;}
+.na{text-decoration:none;color:var(--tx);display:block;}
+.na:hover .nt{color:var(--ac);}
+.nt{font-size:11px;line-height:1.4;margin-bottom:2px;transition:color .2s;}
+.ns{font-size:9px;color:var(--mu);}
+.sbnote{padding:9px 12px;font-size:9px;color:var(--mu);border-top:1px solid var(--bd);}
+.con{padding:14px 18px;}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px;}
+.ctit{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:11px;}
+.sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.sc{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:13px;}
+.sh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px;}
+.sl{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;}
+.si{font-size:15px;opacity:.55;}
+.sv{font-size:22px;font-weight:700;color:var(--tx);line-height:1.1;}
+.ss{font-size:11px;color:var(--mu);margin-top:4px;}
+.rb{display:inline-block;padding:4px 11px;border-radius:6px;font-weight:600;font-size:13px;}
+.rb-b{background:#22c55e14;color:var(--gr);}
+.rb-a{background:#ef444414;color:var(--re);}
+.rb-y{background:#f59e0b14;color:var(--ye);}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.pill.al{background:#22c55e14;color:var(--gr);border:1px solid #22c55e28;}
+.pill.sat{background:#ef444414;color:var(--re);border:1px solid #ef444428;}
+.pill.bekle{background:#f59e0b14;color:var(--ye);border:1px solid #f59e0b28;}
+.ekgd{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;}
+.ek{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:11px;text-align:center;transition:border-color .2s;}
+.ek:hover{border-color:rgba(167,139,250,.35);}
+.eik{font-size:19px;margin-bottom:5px;}
+.enm{font-size:11px;color:var(--mu);margin-bottom:3px;}
+.ev{font-size:15px;font-weight:700;}
+.ed{font-size:10px;color:var(--mu);margin-top:2px;}
+.t{width:100%;border-collapse:collapse;font-size:12px;}
+.t th{text-align:left;padding:7px 9px;color:var(--mu);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--bd);white-space:nowrap;}
+.t td{padding:8px 9px;border-bottom:1px solid rgba(46,42,72,.3);}
+.t tr.al-r td{background:rgba(34,197,94,.04);}
+.t tr.sat-r td{background:rgba(239,68,68,.04);}
+.t tr.bk-r td{background:rgba(245,158,11,.04);}
+.t tr:hover td{background:var(--sf);}
+.gb{background:var(--bd);border-radius:3px;height:3px;margin-top:4px;width:54px;}
+.gf{height:100%;border-radius:3px;background:linear-gradient(90deg,#6366f1,var(--ac));}
+.cc{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:11px;}
+.sel{background:var(--sf);color:var(--tx);border:1px solid var(--bd);padding:5px 10px;border-radius:6px;font-size:12px;outline:none;}
+.pb{background:var(--sf);border:1px solid var(--bd);color:var(--mu);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s;}
+.pb.active{background:rgba(167,139,250,.12);border-color:var(--ac);color:var(--ac);}
+.pb:hover{border-color:rgba(167,139,250,.4);}
+.trg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.trs{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;text-align:center;}
+.trl{font-size:10px;color:var(--mu);text-transform:uppercase;margin-bottom:6px;}
+.trv{font-size:20px;font-weight:700;}
+.pf{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
+.pi{background:var(--sf);border:1px solid var(--bd);color:var(--tx);padding:6px 10px;border-radius:7px;font-size:12px;outline:none;flex:1;min-width:100px;}
+.pi:focus{border-color:var(--ac);}
+.ba{background:var(--ac);color:#0c0a17;border:none;padding:6px 15px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;}
+.ba:hover{opacity:.9;}
+.bd2{background:var(--sf);color:var(--re);border:1px solid rgba(239,68,68,.2);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:11px;}
+.alb{display:inline-block;padding:2px 7px;border-radius:12px;font-size:10px;font-weight:600;background:rgba(245,158,11,.12);color:var(--ye);border:1px solid rgba(245,158,11,.2);}
+.alh{background:rgba(34,197,94,.12);color:var(--gr);border-color:rgba(34,197,94,.2);}
+.es{text-align:center;padding:22px;color:var(--mu);font-size:12px;}
+.gr{color:var(--gr);}.re{color:var(--re);}.ye{color:var(--ye);}
+@media(max-width:1100px){.sb{width:195px;min-width:195px;}}
+@media(max-width:880px){.sb{display:none;}.sg,.trg{grid-template-columns:repeat(2,1fr);}.ekgd{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>📊 BIST Trading</h1>
+<div class="hdr">
+  <div>
+    <div class="brand">LIDYA</div>
+    <div class="brand-sub">Borsa Analiz Platformu</div>
+  </div>
   <div style="display:flex;gap:10px;align-items:center">
     <span id="borsa-durum" class="badge">● YÜKLENIYOR</span>
-    <span id="son-guncelleme" style="font-size:11px;color:#475569"></span>
+    <span id="son-guncelleme" style="font-size:10px;color:var(--mu)"></span>
   </div>
 </div>
 
-<nav class="tab-nav">
-  <button class="tab-btn active" onclick="tabAc('sinyaller',this)">📈 Sinyaller</button>
-  <button class="tab-btn" onclick="tabAc('grafik',this)">📉 Grafik</button>
-  <button class="tab-btn" onclick="tabAc('trackrecord',this)">🏆 Track Record</button>
-  <button class="tab-btn" onclick="tabAc('portfoy',this)">💼 Portföy</button>
+<nav class="tnav">
+  <button class="tb active" onclick="tabAc('sinyaller',this)">Sinyaller</button>
+  <button class="tb" onclick="tabAc('grafik',this)">Grafik</button>
+  <button class="tb" onclick="tabAc('trackrecord',this)">Track Record</button>
+  <button class="tb" onclick="tabAc('portfoy',this)">Portföy</button>
 </nav>
 
-<!-- TAB 1: SİNYALLER -->
-<div id="tab-sinyaller" class="tab-pane active">
-<div class="container">
-  <div class="stat-grid">
-    <div class="stat-card">
-      <div class="stat-head">
-        <div class="stat-label">Piyasa Rejimi</div>
-        <div class="stat-icon">🌐</div>
-      </div>
-      <div id="rejim-badge" class="rejim-badge rejim-yatay">—</div>
-      <div class="stat-sub" id="rejim-aciklama">Yükleniyor...</div>
+<div class="lay">
+
+<!-- LEFT: Haberler -->
+<aside class="sb sb-l">
+  <div class="sbt">Güncel Haberler</div>
+  <div id="haber-listesi"><div class="es">Yükleniyor...</div></div>
+</aside>
+
+<!-- CENTER -->
+<main class="main">
+
+<!-- TAB: Sinyaller -->
+<div id="tab-sinyaller" class="tp active">
+<div class="con">
+  <div class="sg">
+    <div class="sc">
+      <div class="sh"><div class="sl">Piyasa Rejimi</div><div class="si">🌐</div></div>
+      <div id="rejim-badge" class="rb rb-y">—</div>
+      <div class="ss" id="rejim-aciklama">Yükleniyor...</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-head">
-        <div class="stat-label">Aktif Sinyaller</div>
-        <div class="stat-icon">🎯</div>
-      </div>
-      <div class="stat-value" id="sinyal-sayisi">—</div>
-      <div class="stat-sub" id="sinyal-ozet">AL / SAT / BEKLE</div>
+    <div class="sc">
+      <div class="sh"><div class="sl">Aktif Sinyaller</div><div class="si">🎯</div></div>
+      <div class="sv" id="sinyal-sayisi">—</div>
+      <div class="ss" id="sinyal-ozet">AL / SAT / BEKLE</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-head">
-        <div class="stat-label">BIST100</div>
-        <div class="stat-icon">📊</div>
-      </div>
-      <div class="stat-value" id="bist-deger">—</div>
-      <div class="stat-sub" id="bist-sub">USD/TRY: —</div>
+    <div class="sc">
+      <div class="sh"><div class="sl">BIST100</div><div class="si">📊</div></div>
+      <div class="sv" id="bist-deger">—</div>
+      <div class="ss" id="bist-sub">USD/TRY: —</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-head">
-        <div class="stat-label">Başarı Oranı</div>
-        <div class="stat-icon">🏆</div>
-      </div>
-      <div class="stat-value" id="basari-deger">—</div>
-      <div class="stat-sub" id="basari-sub">Tamamlanan: —</div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-title">🏭 Sektör Analizi</div>
-    <div class="sektor-grid" id="sektor-grid">
-      <div class="empty-state">Yükleniyor...</div>
+    <div class="sc">
+      <div class="sh"><div class="sl">Başarı Oranı</div><div class="si">🏆</div></div>
+      <div class="sv" id="basari-deger">—</div>
+      <div class="ss" id="basari-sub">Tamamlanan: —</div>
     </div>
   </div>
   <div class="card">
-    <div class="card-title">📋 Hisse Sinyalleri</div>
-    <div id="sinyal-tablo-alani">
-      <div class="empty-state">Modeller eğitiliyor, lütfen bekle...</div>
-    </div>
+    <div class="ctit">Sektör Analizi</div>
+    <div class="ekgd" id="sektor-grid"><div class="es">Yükleniyor...</div></div>
+  </div>
+  <div class="card">
+    <div class="ctit">Hisse Sinyalleri</div>
+    <div id="sinyal-tablo-alani"><div class="es">Modeller eğitiliyor...</div></div>
   </div>
 </div>
 </div>
 
-<!-- TAB 2: GRAFİK -->
-<div id="tab-grafik" class="tab-pane">
-<div class="container">
+<!-- TAB: Grafik -->
+<div id="tab-grafik" class="tp">
+<div class="con">
   <div class="card">
-    <div class="chart-ctrl">
+    <div class="cc">
       <select id="hisse-sec" class="sel" onchange="grafikGuncelle()">
         {% for h in hisseler %}
         <option value="{{ h }}">{{ h.replace('.IS','') }}</option>
         {% endfor %}
       </select>
-      <button class="period-btn" onclick="periodSec(30,this)">1A</button>
-      <button class="period-btn active" onclick="periodSec(90,this)">3A</button>
-      <button class="period-btn" onclick="periodSec(180,this)">6A</button>
-      <button class="period-btn" onclick="periodSec(252,this)">1Y</button>
+      <button class="pb" onclick="periodSec(30,this)">1A</button>
+      <button class="pb active" onclick="periodSec(90,this)">3A</button>
+      <button class="pb" onclick="periodSec(180,this)">6A</button>
+      <button class="pb" onclick="periodSec(252,this)">1Y</button>
     </div>
-    <div id="grafik-alan" style="height:380px"></div>
-    <div id="hacim-alan" style="height:110px;margin-top:2px"></div>
-    <div id="rsi-alan" style="height:110px;margin-top:2px"></div>
+    <div id="grafik-alan" style="height:360px"></div>
+    <div id="hacim-alan" style="height:100px;margin-top:2px"></div>
+    <div id="rsi-alan" style="height:100px;margin-top:2px"></div>
   </div>
 </div>
 </div>
 
-<!-- TAB 3: TRACK RECORD -->
-<div id="tab-trackrecord" class="tab-pane">
-<div class="container">
-  <div class="tr-stat-grid">
-    <div class="tr-stat">
-      <div class="tr-stat-label">📊 Toplam Sinyal</div>
-      <div class="tr-stat-value" id="tr-toplam">—</div>
-    </div>
-    <div class="tr-stat">
-      <div class="tr-stat-label">✅ Tamamlanan</div>
-      <div class="tr-stat-value" id="tr-tamamlanan">—</div>
-    </div>
-    <div class="tr-stat">
-      <div class="tr-stat-label">🎯 Başarı Oranı</div>
-      <div class="tr-stat-value" id="tr-basari">—</div>
-    </div>
-    <div class="tr-stat">
-      <div class="tr-stat-label">💰 Ort. Kar/Zarar</div>
-      <div class="tr-stat-value" id="tr-ort-kar">—</div>
-    </div>
+<!-- TAB: Track Record -->
+<div id="tab-trackrecord" class="tp">
+<div class="con">
+  <div class="trg">
+    <div class="trs"><div class="trl">Toplam Sinyal</div><div class="trv" id="tr-toplam">—</div></div>
+    <div class="trs"><div class="trl">Tamamlanan</div><div class="trv" id="tr-tamamlanan">—</div></div>
+    <div class="trs"><div class="trl">Başarı Oranı</div><div class="trv" id="tr-basari">—</div></div>
+    <div class="trs"><div class="trl">Ort. Kar/Zarar</div><div class="trv" id="tr-ort-kar">—</div></div>
   </div>
   <div class="card">
-    <div class="card-title">📈 Kümülatif Performans</div>
-    <div id="perf-grafik" style="height:240px"></div>
+    <div class="ctit">Kümülatif Performans</div>
+    <div id="perf-grafik" style="height:220px"></div>
   </div>
   <div class="card">
-    <div class="card-title">📋 Sinyal Geçmişi</div>
-    <div id="track-record-alani">
-      <div class="empty-state">Yükleniyor...</div>
-    </div>
+    <div class="ctit">Sinyal Geçmişi</div>
+    <div id="track-record-alani"><div class="es">Yükleniyor...</div></div>
   </div>
 </div>
 </div>
 
-<!-- TAB 4: PORTFÖY -->
-<div id="tab-portfoy" class="tab-pane">
-<div class="container">
+<!-- TAB: Portföy -->
+<div id="tab-portfoy" class="tp">
+<div class="con">
   <div class="card">
-    <div class="card-title">💼 Portföy Takibi</div>
-    <div class="p-form">
-      <input class="p-input" id="p-sembol" placeholder="Sembol (örn: AKBNK)" list="h-list" style="max-width:140px">
-      <datalist id="h-list">{% for h in hisseler %}<option value="{{ h.replace('.IS','') }}">{% endfor %}</datalist>
-      <input class="p-input" id="p-adet" placeholder="Adet" type="number" style="max-width:100px">
-      <input class="p-input" id="p-maliyet" placeholder="Ort. Maliyet ₺" type="number" style="max-width:150px">
-      <button class="btn-add" onclick="portfoyEkle()">+ Ekle</button>
+    <div class="ctit">Portföy Takibi</div>
+    <div class="pf">
+      <input class="pi" id="p-sembol" placeholder="Sembol (örn: AKBNK)" list="hl" style="max-width:140px">
+      <datalist id="hl">{% for h in hisseler %}<option value="{{ h.replace('.IS','') }}">{% endfor %}</datalist>
+      <input class="pi" id="p-adet" placeholder="Adet" type="number" style="max-width:90px">
+      <input class="pi" id="p-maliyet" placeholder="Ort. Maliyet ₺" type="number" style="max-width:145px">
+      <button class="ba" onclick="portfoyEkle()">+ Ekle</button>
     </div>
-    <div id="portfoy-tablo"><div class="empty-state">Portföy boş.</div></div>
-    <div id="portfoy-ozet" style="display:none;margin-top:14px;padding:14px;background:#0f172a;border-radius:10px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px"></div>
+    <div id="portfoy-tablo"><div class="es">Portföy boş.</div></div>
+    <div id="portfoy-ozet" style="display:none;margin-top:12px;padding:12px;background:var(--sf);border-radius:8px;font-size:12px;display:flex;gap:18px;flex-wrap:wrap"></div>
   </div>
   <div class="card">
-    <div class="card-title">🔔 Fiyat Alarmları</div>
-    <div class="p-form">
-      <input class="p-input" id="a-sembol" placeholder="Sembol" list="h-list2" style="max-width:140px">
-      <datalist id="h-list2">{% for h in hisseler %}<option value="{{ h.replace('.IS','') }}">{% endfor %}</datalist>
+    <div class="ctit">Fiyat Alarmları</div>
+    <div class="pf">
+      <input class="pi" id="a-sembol" placeholder="Sembol" list="hl2" style="max-width:140px">
+      <datalist id="hl2">{% for h in hisseler %}<option value="{{ h.replace('.IS','') }}">{% endfor %}</datalist>
       <select class="sel" id="a-yon">
         <option value="above">Üstüne çıkınca</option>
         <option value="below">Altına düşünce</option>
       </select>
-      <input class="p-input" id="a-fiyat" placeholder="Hedef Fiyat ₺" type="number" style="max-width:150px">
-      <button class="btn-add" onclick="alarmEkle()">+ Alarm Kur</button>
+      <input class="pi" id="a-fiyat" placeholder="Hedef Fiyat ₺" type="number" style="max-width:145px">
+      <button class="ba" onclick="alarmEkle()">+ Alarm</button>
     </div>
-    <div id="alarm-listesi"><div class="empty-state">Henüz alarm yok.</div></div>
+    <div id="alarm-listesi"><div class="es">Henüz alarm yok.</div></div>
   </div>
 </div>
 </div>
 
+</main>
+
+<!-- RIGHT: Fiyatlar -->
+<aside class="sb sb-r">
+  <div class="sbt">₿ Kripto</div>
+  <div id="kripto-listesi"><div class="es">Yükleniyor...</div></div>
+  <div style="height:1px;background:var(--bd)"></div>
+  <div class="sbt">💱 Döviz</div>
+  <div id="doviz-listesi"><div class="es">Yükleniyor...</div></div>
+  <div style="height:1px;background:var(--bd)"></div>
+  <div class="sbt">🥇 Emtia</div>
+  <div id="emtia-listesi"><div class="es">Yükleniyor...</div></div>
+  <div class="sbnote">5 dk. güncelleme · Yahoo Finance</div>
+</aside>
+
+</div><!-- /lay -->
+
 <script>
-let grafikVerisi = {};
-let trackData = null;
-let currentPeriod = 90;
-let guncelFiyatlar = {};
+const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
+let grafikVerisi={}, trackData=null, period=90, fiyatlar={};
 
-function tabAc(id, btn) {
-  document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + id).classList.add('active');
+function tabAc(id,btn){
+  document.querySelectorAll('.tp').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tb').forEach(e=>e.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
   btn.classList.add('active');
-  if (id === 'grafik') grafikGuncelle();
-  if (id === 'trackrecord') perfGrafikCiz();
-  if (id === 'portfoy') { portfoyGuncelle(); alarmListeGuncelle(); }
+  if(id==='grafik') grafikGuncelle();
+  if(id==='trackrecord') perfCiz();
+  if(id==='portfoy'){portfoyGun();alarmGun();}
 }
 
-function veriCek() {
-  fetch('/api/veri')
-    .then(r => r.json())
-    .then(data => {
-      grafikVerisi = data.grafik_verisi || {};
-      trackData = data.track_record;
-      (data.sinyaller || []).forEach(s => {
-        guncelFiyatlar[s.sembol.replace('.IS','')] = s.fiyat;
-      });
-      sayfaGuncelle(data);
-      alarmKontrol();
-    })
-    .catch(e => console.log('Hata:', e));
+function veriCek(){
+  fetch('/api/veri').then(r=>r.json()).then(data=>{
+    grafikVerisi=data.grafik_verisi||{};
+    trackData=data.track_record;
+    (data.sinyaller||[]).forEach(s=>{fiyatlar[s.sembol.replace('.IS','')]=s.fiyat;});
+    sayfaGun(data);
+    alarmKontrol();
+  }).catch(e=>console.log('Hata:',e));
 }
 
-function sayfaGuncelle(data) {
-  const borsa = data.borsa_acik;
-  const d = document.getElementById('borsa-durum');
-  d.textContent = borsa ? '● BORSA AÇIK' : '● BORSA KAPALI';
-  d.className = 'badge' + (borsa ? '' : ' kapali');
-  const sg = document.getElementById('son-guncelleme');
-  if (sg) sg.textContent = data.son_guncelleme ? 'Son: ' + data.son_guncelleme : '';
+function sayfaGun(data){
+  const b=data.borsa_acik, d=document.getElementById('borsa-durum');
+  d.textContent=b?'● BORSA AÇIK':'● BORSA KAPALI';
+  d.className='badge'+(b?'':' kapali');
+  const sg=document.getElementById('son-guncelleme');
+  if(sg) sg.textContent=data.son_guncelleme||'';
+  if(!data.hazir) return;
 
-  if (!data.hazir) return;
+  const rejim=(data.piyasa&&data.piyasa.rejim)||'YATAY';
+  const re=document.getElementById('rejim-badge');
+  re.textContent=((data.piyasa&&data.piyasa.emoji)||'')+' '+rejim;
+  re.className='rb '+(rejim.includes('BOGA')?'rb-b':rejim.includes('AYI')?'rb-a':'rb-y');
+  document.getElementById('rejim-aciklama').textContent=(data.piyasa&&data.piyasa.aciklama)||'';
 
-  const rejim = (data.piyasa && data.piyasa.rejim) || 'YATAY';
-  const re = document.getElementById('rejim-badge');
-  re.textContent = ((data.piyasa && data.piyasa.emoji) || '') + ' ' + rejim;
-  re.className = 'rejim-badge rejim-' + (rejim.includes('BOGA') ? 'boga' : rejim.includes('AYI') ? 'ayi' : 'yatay');
-  document.getElementById('rejim-aciklama').textContent = (data.piyasa && data.piyasa.aciklama) || '';
+  const sn=data.sinyaller||[];
+  const al=sn.filter(s=>s.karar==='AL').length, sat=sn.filter(s=>s.karar==='SAT').length, bk=sn.filter(s=>s.karar==='BEKLE').length;
+  document.getElementById('sinyal-sayisi').textContent=sn.length;
+  document.getElementById('sinyal-ozet').innerHTML='<span class="gr">'+al+' AL</span> / <span class="re">'+sat+' SAT</span> / <span class="ye">'+bk+' BEKLE</span>';
 
-  const sinyaller = data.sinyaller || [];
-  const al = sinyaller.filter(s => s.karar === 'AL').length;
-  const sat = sinyaller.filter(s => s.karar === 'SAT').length;
-  const bekle = sinyaller.filter(s => s.karar === 'BEKLE').length;
-  document.getElementById('sinyal-sayisi').textContent = sinyaller.length;
-  document.getElementById('sinyal-ozet').innerHTML =
-    '<span class="green">' + al + ' AL</span> / ' +
-    '<span class="red">' + sat + ' SAT</span> / ' +
-    '<span class="yellow">' + bekle + ' BEKLE</span>';
-
-  if (data.piyasa && data.piyasa.bist_son) {
-    const p = data.piyasa;
-    const gr = p.bist_getiri_1ay >= 0 ? 'green' : 'red';
-    document.getElementById('bist-deger').textContent =
-      Number(p.bist_son).toLocaleString('tr-TR', {maximumFractionDigits:0});
-    document.getElementById('bist-sub').innerHTML =
-      '<span class="' + gr + '">1A: %' + Number(p.bist_getiri_1ay).toFixed(1) + '</span>' +
-      ' &nbsp;|&nbsp; USD: ' + Number(p.usdtry).toFixed(2);
+  if(data.piyasa&&data.piyasa.bist_son){
+    const p=data.piyasa, gr=p.bist_getiri_1ay>=0?'gr':'re';
+    document.getElementById('bist-deger').textContent=Number(p.bist_son).toLocaleString('tr-TR',{maximumFractionDigits:0});
+    document.getElementById('bist-sub').innerHTML='<span class="'+gr+'">1A: %'+Number(p.bist_getiri_1ay).toFixed(1)+'</span> | USD: '+Number(p.usdtry).toFixed(2);
   }
 
-  const tr = data.track_record;
-  if (tr && tr.tamamlanan > 0) {
-    const br = tr.basari >= 55 ? 'green' : tr.basari >= 45 ? 'yellow' : 'red';
-    const kr = tr.ort_kar >= 0 ? 'green' : 'red';
-    const bd = document.getElementById('basari-deger');
-    bd.className = 'stat-value ' + br;
-    bd.textContent = '%' + tr.basari;
-    document.getElementById('basari-sub').innerHTML =
-      'Tamamlanan: ' + tr.tamamlanan + ' &nbsp;|&nbsp; Ort: <span class="' + kr + '">%' +
-      (tr.ort_kar > 0 ? '+' : '') + tr.ort_kar + '</span>';
-  } else {
-    document.getElementById('basari-deger').textContent = '—';
-    document.getElementById('basari-sub').textContent = 'Henüz tamamlanan yok';
+  const tr=data.track_record;
+  if(tr&&tr.tamamlanan>0){
+    const br=tr.basari>=55?'gr':tr.basari>=45?'ye':'re', kr=tr.ort_kar>=0?'gr':'re';
+    const bd=document.getElementById('basari-deger');
+    bd.className='sv '+br; bd.textContent='%'+tr.basari;
+    document.getElementById('basari-sub').innerHTML='Tamamlanan: '+tr.tamamlanan+' | <span class="'+kr+'">%'+(tr.ort_kar>0?'+':'')+tr.ort_kar+'</span>';
+  }else{
+    document.getElementById('basari-deger').textContent='—';
+    document.getElementById('basari-sub').textContent='Henüz tamamlanan yok';
   }
 
-  sektorGuncelle(sinyaller);
-  sinyalTabloGuncelle(sinyaller);
-  trackTabGuncelle(tr);
+  sektorGun(sn);
+  tabloGun(sn);
+  trTabGun(tr);
+  if(data.kenar) kenarGun(data.kenar);
+  if(data.haberler&&data.haberler.length) haberGun(data.haberler);
 }
 
-const SEKTOR_MAP = {
-  AKBNK:'Bankacılık', GARAN:'Bankacılık', YKBNK:'Bankacılık',
-  EKGYO:'Gayrimenkul', PGSUS:'Havacılık', THYAO:'Havacılık',
-  TCELL:'Telekom', SISE:'Cam & Kimya', FROTO:'Otomotiv',
-  EREGL:'Demir & Çelik', ASELS:'Savunma', TUPRS:'Petrol & Enerji'
-};
-const SEKTOR_ICON = {
-  'Bankacılık':'🏦', 'Gayrimenkul':'🏢', 'Havacılık':'✈️',
-  'Telekom':'📡', 'Cam & Kimya':'🧪', 'Otomotiv':'🚗',
-  'Demir & Çelik':'⚙️', 'Savunma':'🛡️', 'Petrol & Enerji':'⛽'
-};
+const SMAP={AKBNK:'Bankacılık',GARAN:'Bankacılık',YKBNK:'Bankacılık',EKGYO:'Gayrimenkul',PGSUS:'Havacılık',THYAO:'Havacılık',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Çelik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
+const SICON={'Bankacılık':'🏦','Gayrimenkul':'🏢','Havacılık':'✈️','Telekom':'📡','Cam & Kimya':'🧪','Otomotiv':'🚗','Demir & Çelik':'⚙️','Savunma':'🛡️','Petrol & Enerji':'⛽'};
 
-function sektorGuncelle(sinyaller) {
-  const s = {};
-  sinyaller.forEach(x => {
-    const kod = x.sembol.replace('.IS','');
-    const sek = SEKTOR_MAP[kod] || 'Diğer';
-    if (!s[sek]) s[sek] = {al:0, sat:0, bekle:0, deg:[]};
-    if (x.karar==='AL') s[sek].al++;
-    else if (x.karar==='SAT') s[sek].sat++;
-    else s[sek].bekle++;
-    s[sek].deg.push(x.degisim || 0);
+function sektorGun(sn){
+  const s={};
+  sn.forEach(x=>{const k=x.sembol.replace('.IS',''),sek=SMAP[k]||'Diğer';
+    if(!s[sek]) s[sek]={al:0,sat:0,bk:0,d:[]};
+    if(x.karar==='AL') s[sek].al++; else if(x.karar==='SAT') s[sek].sat++; else s[sek].bk++;
+    s[sek].d.push(x.degisim||0);
   });
-  let html = '';
-  Object.entries(s).forEach(([sek, b]) => {
-    const ort = b.deg.length ? b.deg.reduce((a,v) => a+v, 0) / b.deg.length : 0;
-    const r = ort > 0 ? 'green' : ort < 0 ? 'red' : 'yellow';
-    const durum = b.al > b.sat ? '🟢 AL ağırlıklı' : b.sat > b.al ? '🔴 SAT ağırlıklı' : '🟡 Karışık';
-    html += '<div class="sektor-kart">' +
-      '<div class="sektor-icon">' + (SEKTOR_ICON[sek]||'📦') + '</div>' +
-      '<div class="sektor-name">' + sek + '</div>' +
-      '<div class="sektor-val ' + r + '">' + (ort>=0?'+':'') + ort.toFixed(1) + '%</div>' +
-      '<div class="sektor-durum">' + durum + '</div>' +
-      '</div>';
+  let h='';
+  Object.entries(s).forEach(([sek,b])=>{
+    const ort=b.d.length?b.d.reduce((a,v)=>a+v,0)/b.d.length:0;
+    const r=ort>0?'gr':ort<0?'re':'ye';
+    const du=b.al>b.sat?'AL ağırlıklı':b.sat>b.al?'SAT ağırlıklı':'Karışık';
+    h+='<div class="ek"><div class="eik">'+(SICON[sek]||'📦')+'</div><div class="enm">'+sek+'</div><div class="ev '+r+'">'+(ort>=0?'+':'')+ort.toFixed(1)+'%</div><div class="ed">'+du+'</div></div>';
   });
-  document.getElementById('sektor-grid').innerHTML = html || '<div class="empty-state">Yükleniyor...</div>';
+  document.getElementById('sektor-grid').innerHTML=h||'<div class="es">Yükleniyor...</div>';
 }
 
-function sinyalTabloGuncelle(sinyaller) {
-  if (!sinyaller || !sinyaller.length) {
-    document.getElementById('sinyal-tablo-alani').innerHTML = '<div class="empty-state">Modeller eğitiliyor...</div>';
-    return;
-  }
-  let h = '<table class="tablo"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Değişim</th><th>RSI</th><th>Karar</th><th>Güven</th><th>Hedef</th><th>Stop</th></tr></thead><tbody>';
-  sinyaller.forEach(s => {
-    const dr = s.degisim >= 0 ? 'green' : 'red';
-    const di = s.degisim >= 0 ? '+' : '';
-    const kc = s.karar==='AL' ? 'al' : s.karar==='SAT' ? 'sat' : 'bekle';
-    const gp = (s.guven * 100).toFixed(0);
-    const rr = s.rsi < 40 ? 'green' : s.rsi > 60 ? 'red' : 'yellow';
-    h += '<tr class="' + kc + '-row">' +
-      '<td style="font-weight:700">' + s.sembol.replace('.IS','') + '</td>' +
-      '<td>' + Number(s.fiyat).toFixed(2) + ' ₺</td>' +
-      '<td class="' + dr + '">' + di + Number(s.degisim).toFixed(2) + '%</td>' +
-      '<td class="' + rr + '">' + Number(s.rsi).toFixed(1) + '</td>' +
-      '<td><span class="pill ' + kc + '">' + s.karar + '</span></td>' +
-      '<td>%' + gp + '<div class="guven-bar"><div class="guven-fill" style="width:' + gp + '%"></div></div></td>' +
-      '<td class="green">' + (s.hedef ? Number(s.hedef).toFixed(2) + ' ₺' : '—') + '</td>' +
-      '<td class="' + (s.karar==='SAT'?'green':'red') + '">' + (s.stop ? Number(s.stop).toFixed(2) + ' ₺' : '—') + '</td>' +
-      '</tr>';
+function tabloGun(sn){
+  if(!sn||!sn.length){document.getElementById('sinyal-tablo-alani').innerHTML='<div class="es">Modeller eğitiliyor...</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Değişim</th><th>RSI</th><th>Karar</th><th>Güven</th><th>Hedef</th><th>Stop</th></tr></thead><tbody>';
+  sn.forEach(s=>{
+    const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
+    const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
+    const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
+    const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
+    h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+'</td>'+
+      '<td>'+Number(s.fiyat).toFixed(2)+' ₺</td>'+
+      '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
+      '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
+      '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
+      '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
+      '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' ₺':'—')+'</td></tr>';
   });
-  document.getElementById('sinyal-tablo-alani').innerHTML = h + '</tbody></table>';
+  document.getElementById('sinyal-tablo-alani').innerHTML=h+'</tbody></table>';
 }
 
-function periodSec(gun, btn) {
-  currentPeriod = gun;
-  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+function periodSec(g,btn){
+  period=g;
+  document.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   grafikGuncelle();
 }
 
-function grafikGuncelle() {
-  const hisse = document.getElementById('hisse-sec') && document.getElementById('hisse-sec').value;
-  const veri = grafikVerisi[hisse];
-  if (!veri || !veri.tarihler) return;
-  const n = Math.min(currentPeriod, veri.tarihler.length);
-  const sl = arr => (arr || []).slice(-n);
-  const tar = sl(veri.tarihler), op = sl(veri.open), hi = sl(veri.high);
-  const lo = sl(veri.low), cl = sl(veri.close), m20 = sl(veri.ma20);
-  const m50 = sl(veri.ma50), vol = sl(veri.volume), rsi = sl(veri.rsi);
+function grafikGuncelle(){
+  const el=document.getElementById('hisse-sec');
+  if(!el) return;
+  const hisse=el.value, veri=grafikVerisi[hisse];
+  if(!veri||!veri.tarihler) return;
+  const n=Math.min(period,veri.tarihler.length);
+  const sl=arr=>(arr||[]).slice(-n);
+  const tar=sl(veri.tarihler),op=sl(veri.open),hi=sl(veri.high),lo=sl(veri.low),cl=sl(veri.close);
+  const m20=sl(veri.ma20),m50=sl(veri.ma50),vol=sl(veri.volume),rsi=sl(veri.rsi);
+  const BL={paper_bgcolor:CBG,plot_bgcolor:CBG,font:{color:CFN,size:10},margin:{t:6,r:10,b:26,l:60}};
 
-  Plotly.newPlot('grafik-alan', [
-    {type:'candlestick', x:tar, open:op, high:hi, low:lo, close:cl, name:hisse.replace('.IS',''),
-     increasing:{line:{color:'#22c55e'},fillcolor:'#22c55e22'},
-     decreasing:{line:{color:'#ef4444'},fillcolor:'#ef444422'}},
-    {type:'scatter', x:tar, y:m20, name:'MA20', line:{color:'#f59e0b',width:1.5}},
-    {type:'scatter', x:tar, y:m50, name:'MA50', line:{color:'#8b5cf6',width:1.5}}
-  ], {
-    paper_bgcolor:'#1e293b', plot_bgcolor:'#1e293b',
-    font:{color:'#94a3b8', size:11},
-    xaxis:{gridcolor:'#334155', rangeslider:{visible:false}, type:'date'},
-    yaxis:{gridcolor:'#334155', ticksuffix:' ₺'},
-    margin:{t:8, r:16, b:28, l:64},
-    legend:{bgcolor:'#0f172a33', font:{size:11}},
-    showlegend:true
-  }, {responsive:true, displayModeBar:false});
+  Plotly.newPlot('grafik-alan',[
+    {type:'candlestick',x:tar,open:op,high:hi,low:lo,close:cl,name:hisse.replace('.IS',''),
+     increasing:{line:{color:'#22c55e',width:1},fillcolor:'rgba(34,197,94,.18)'},
+     decreasing:{line:{color:'#ef4444',width:1},fillcolor:'rgba(239,68,68,.18)'}},
+    {type:'scatter',x:tar,y:m20,name:'MA20',line:{color:'#f59e0b',width:1.5},opacity:.9},
+    {type:'scatter',x:tar,y:m50,name:'MA50',line:{color:'#8b5cf6',width:1.5},opacity:.9}
+  ],{...BL,xaxis:{gridcolor:CGR,rangeslider:{visible:false},type:'date'},
+     yaxis:{gridcolor:CGR,ticksuffix:' ₺'},
+     legend:{bgcolor:CBG+'aa',font:{size:10}},showlegend:true},
+  {responsive:true,displayModeBar:false});
 
-  if (vol && vol.length) {
-    const vc = cl.map((c,i) => c >= (op[i]||c) ? '#22c55e55' : '#ef444455');
-    Plotly.newPlot('hacim-alan', [{type:'bar', x:tar, y:vol, marker:{color:vc}, name:'Hacim'}], {
-      paper_bgcolor:'#1e293b', plot_bgcolor:'#1e293b',
-      font:{color:'#94a3b8', size:10},
-      xaxis:{gridcolor:'#334155', type:'date'},
-      yaxis:{gridcolor:'#334155', tickformat:'.2s'},
-      margin:{t:4, r:16, b:28, l:64}, showlegend:false
-    }, {responsive:true, displayModeBar:false});
+  if(vol&&vol.length){
+    Plotly.newPlot('hacim-alan',[{type:'bar',x:tar,y:vol,name:'Hacim',
+      marker:{color:cl.map((c,i)=>c>=(op[i]||c)?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}],
+    {...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,tickformat:'.2s'},showlegend:false},
+    {responsive:true,displayModeBar:false});
   }
 
-  if (rsi && rsi.length) {
-    const x0 = tar[0], x1 = tar[tar.length-1];
-    Plotly.newPlot('rsi-alan', [
-      {type:'scatter', x:tar, y:rsi, line:{color:'#3b82f6', width:1.5}, name:'RSI'},
-      {type:'scatter', x:[x0,x1], y:[70,70], line:{color:'#ef444455', width:1, dash:'dot'}, showlegend:false},
-      {type:'scatter', x:[x0,x1], y:[30,30], line:{color:'#22c55e55', width:1, dash:'dot'}, showlegend:false}
-    ], {
-      paper_bgcolor:'#1e293b', plot_bgcolor:'#1e293b',
-      font:{color:'#94a3b8', size:10},
-      xaxis:{gridcolor:'#334155', type:'date'},
-      yaxis:{gridcolor:'#334155', range:[0,100], tickvals:[30,50,70]},
-      margin:{t:4, r:16, b:28, l:64}, showlegend:false
-    }, {responsive:true, displayModeBar:false});
+  if(rsi&&rsi.length){
+    const x0=tar[0],x1=tar[tar.length-1];
+    Plotly.newPlot('rsi-alan',[
+      {type:'scatter',x:tar,y:rsi,line:{color:'#6366f1',width:1.5},name:'RSI'},
+      {type:'scatter',x:[x0,x1],y:[70,70],line:{color:'rgba(239,68,68,.3)',width:1,dash:'dot'},showlegend:false},
+      {type:'scatter',x:[x0,x1],y:[30,30],line:{color:'rgba(34,197,94,.3)',width:1,dash:'dot'},showlegend:false}
+    ],{...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,range:[0,100],tickvals:[30,50,70]},showlegend:false},
+    {responsive:true,displayModeBar:false});
   }
 }
 
-function trackTabGuncelle(tr) {
-  if (!tr) return;
-  const br = tr.basari >= 55 ? 'green' : tr.basari >= 45 ? 'yellow' : 'red';
-  const kr = tr.ort_kar >= 0 ? 'green' : 'red';
-  document.getElementById('tr-toplam').textContent = tr.toplam;
-  document.getElementById('tr-tamamlanan').textContent = tr.tamamlanan;
-  const tb = document.getElementById('tr-basari');
-  tb.className = 'tr-stat-value ' + br;
-  tb.textContent = tr.tamamlanan > 0 ? '%' + tr.basari : '—';
-  const tk = document.getElementById('tr-ort-kar');
-  tk.className = 'tr-stat-value ' + kr;
-  tk.textContent = tr.tamamlanan > 0 ? '%' + (tr.ort_kar>0?'+':'') + tr.ort_kar : '—';
-
-  if (!tr.son_sinyaller || !tr.son_sinyaller.length) {
-    document.getElementById('track-record-alani').innerHTML = '<div class="empty-state">Henüz tamamlanan sinyal yok.</div>';
-    return;
+function trTabGun(tr){
+  if(!tr) return;
+  const br=tr.basari>=55?'gr':tr.basari>=45?'ye':'re', kr=tr.ort_kar>=0?'gr':'re';
+  document.getElementById('tr-toplam').textContent=tr.toplam;
+  document.getElementById('tr-tamamlanan').textContent=tr.tamamlanan;
+  const tb=document.getElementById('tr-basari'); tb.className='trv '+br;
+  tb.textContent=tr.tamamlanan>0?'%'+tr.basari:'—';
+  const tk=document.getElementById('tr-ort-kar'); tk.className='trv '+kr;
+  tk.textContent=tr.tamamlanan>0?'%'+(tr.ort_kar>0?'+':'')+tr.ort_kar:'—';
+  if(!tr.son_sinyaller||!tr.son_sinyaller.length){
+    document.getElementById('track-record-alani').innerHTML='<div class="es">Henüz tamamlanan sinyal yok.</div>';return;
   }
-  let h = '<table class="tablo"><thead><tr><th>Tarih</th><th>Hisse</th><th>Karar</th><th>Giriş</th><th>Hedef</th><th>Stop</th><th>Çıkış</th><th>K/Z</th><th>Sonuç</th></tr></thead><tbody>';
-  tr.son_sinyaller.forEach(s => {
-    const kzv = s.kar_zarar ? parseFloat(s.kar_zarar) : null;
-    const sr = s.sonuc==='KAZANDI' ? 'green' : s.sonuc==='KAYBETTI' ? 'red' : 'yellow';
-    const kc = s.karar==='AL' ? 'al' : s.karar==='SAT' ? 'sat' : 'bekle';
-    const kzs = kzv != null ? '<span class="' + (kzv>=0?'green':'red') + '">%' + (kzv>0?'+':'') + kzv.toFixed(1) + '</span>' : '—';
-    h += '<tr class="' + kc + '-row">' +
-      '<td style="font-size:11px;white-space:nowrap">' + (s.zaman||'—') + '</td>' +
-      '<td style="font-weight:700">' + (s.sembol||'').replace('.IS','') + '</td>' +
-      '<td><span class="pill ' + kc + '">' + s.karar + '</span></td>' +
-      '<td>' + (s.fiyat_giris ? parseFloat(s.fiyat_giris).toFixed(2)+' ₺' : '—') + '</td>' +
-      '<td class="green">' + (s.hedef ? parseFloat(s.hedef).toFixed(2)+' ₺' : '—') + '</td>' +
-      '<td class="' + (s.karar==='SAT'?'green':'red') + '">' + (s.stop ? parseFloat(s.stop).toFixed(2)+' ₺' : '—') + '</td>' +
-      '<td>' + (s.fiyat_cikis ? parseFloat(s.fiyat_cikis).toFixed(2)+' ₺' : '—') + '</td>' +
-      '<td>' + kzs + '</td>' +
-      '<td class="' + sr + '" style="font-weight:600">' + (s.sonuc||'Bekliyor') + '</td>' +
-      '</tr>';
+  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Karar</th><th>Giriş</th><th>Hedef</th><th>Stop</th><th>Çıkış</th><th>K/Z</th><th>Sonuç</th></tr></thead><tbody>';
+  tr.son_sinyaller.forEach(s=>{
+    const kzv=s.kar_zarar?parseFloat(s.kar_zarar):null;
+    const sr=s.sonuc==='KAZANDI'?'gr':s.sonuc==='KAYBETTI'?'re':'ye';
+    const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
+    const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
+    const kzs=kzv!=null?'<span class="'+(kzv>=0?'gr':'re')+'">%'+(kzv>0?'+':'')+kzv.toFixed(1)+'</span>':'—';
+    h+='<tr class="'+rc+'"><td style="font-size:10px;white-space:nowrap">'+(s.zaman||'—')+'</td>'+
+      '<td style="font-weight:700">'+(s.sembol||'').replace('.IS','')+'</td>'+
+      '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
+      '<td>'+(s.fiyat_giris?parseFloat(s.fiyat_giris).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td class="gr">'+(s.hedef?parseFloat(s.hedef).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?parseFloat(s.stop).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td>'+(s.fiyat_cikis?parseFloat(s.fiyat_cikis).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td>'+kzs+'</td>'+
+      '<td class="'+sr+'" style="font-weight:600">'+(s.sonuc||'Bekliyor')+'</td></tr>';
   });
-  document.getElementById('track-record-alani').innerHTML = h + '</tbody></table>';
+  document.getElementById('track-record-alani').innerHTML=h+'</tbody></table>';
 }
 
-function perfGrafikCiz() {
-  if (!trackData || !trackData.tamamlanan_liste || !trackData.tamamlanan_liste.length) return;
-  const liste = trackData.tamamlanan_liste;
-  let cum = 0;
-  const xs = [], ys = [], txts = [];
-  liste.forEach((item, i) => {
-    cum += parseFloat(item.kar_zarar || 0);
-    xs.push(i + 1);
-    ys.push(parseFloat(cum.toFixed(2)));
-    txts.push((item.sembol||'').replace('.IS','') + ' ' + (item.sonuc||''));
+function perfCiz(){
+  if(!trackData||!trackData.tamamlanan_liste||!trackData.tamamlanan_liste.length) return;
+  const liste=trackData.tamamlanan_liste;
+  let cum=0; const xs=[],ys=[],txts=[];
+  liste.forEach((item,i)=>{cum+=parseFloat(item.kar_zarar||0);xs.push(i+1);ys.push(parseFloat(cum.toFixed(2)));txts.push((item.sembol||'').replace('.IS','')+' '+(item.sonuc||''));});
+  const last=ys[ys.length-1]||0;
+  Plotly.newPlot('perf-grafik',[{type:'scatter',x:xs,y:ys,mode:'lines+markers',
+    line:{color:'#6366f1',width:2},marker:{color:ys.map(v=>v>=0?'#22c55e':'#ef4444'),size:5},
+    fill:'tozeroy',fillcolor:last>=0?'rgba(34,197,94,.06)':'rgba(239,68,68,.06)',
+    text:txts,hovertemplate:'%{text}<br>Kümülatif: %{y:.1f}%<extra></extra>'}],
+  {paper_bgcolor:CBG,plot_bgcolor:CBG,font:{color:CFN,size:11},
+   xaxis:{gridcolor:CGR,title:'Sinyal #'},yaxis:{gridcolor:CGR,ticksuffix:'%',zeroline:true,zerolinecolor:'#2e2a48'},
+   margin:{t:6,r:10,b:36,l:50},showlegend:false},
+  {responsive:true,displayModeBar:false});
+}
+
+function fp(v,d){return v==null?'—':Number(v).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d});}
+
+function kenarGun(kenar){
+  ['kripto','doviz','emtia'].forEach(grp=>{
+    if(!kenar[grp]||!kenar[grp].length) return;
+    const pfx=grp==='kripto'?'$':grp==='doviz'?'₺':'$';
+    const dec=grp==='emtia'?1:2;
+    let h='';
+    kenar[grp].forEach(x=>{
+      const r=(x.degisim||0)>=0?'gr':'re', d=(x.degisim||0)>=0?'+':'';
+      h+='<div class="sbi"><div class="prow">'+
+        '<div><div class="pname">'+x.name+'</div><div class="pval">'+pfx+fp(x.fiyat,dec)+'</div></div>'+
+        '<div class="pchg '+r+'">'+d+Number(x.degisim||0).toFixed(1)+'%</div>'+
+        '</div></div>';
+    });
+    document.getElementById(grp+'-listesi').innerHTML=h;
   });
-  const last = ys[ys.length-1] || 0;
-  Plotly.newPlot('perf-grafik', [{
-    type:'scatter', x:xs, y:ys, mode:'lines+markers',
-    line:{color:'#3b82f6', width:2},
-    marker:{color:ys.map(v => v>=0?'#22c55e':'#ef4444'), size:5},
-    fill:'tozeroy', fillcolor:last>=0?'#22c55e0d':'#ef44440d',
-    text:txts,
-    hovertemplate:'%{text}<br>Kümülatif: %{y:.1f}%<extra></extra>'
-  }], {
-    paper_bgcolor:'#1e293b', plot_bgcolor:'#1e293b',
-    font:{color:'#94a3b8', size:11},
-    xaxis:{gridcolor:'#334155', title:'Sinyal #'},
-    yaxis:{gridcolor:'#334155', ticksuffix:'%', zeroline:true, zerolinecolor:'#475569'},
-    margin:{t:8, r:16, b:40, l:56}, showlegend:false
-  }, {responsive:true, displayModeBar:false});
 }
 
-// Portföy
-function portfoyEkle() {
-  const sembol = (document.getElementById('p-sembol').value||'').toUpperCase().trim();
-  const adet = parseFloat(document.getElementById('p-adet').value);
-  const maliyet = parseFloat(document.getElementById('p-maliyet').value);
-  if (!sembol || !adet || !maliyet) { alert('Tüm alanları doldurun.'); return; }
-  const p = JSON.parse(localStorage.getItem('portfoy')||'[]');
-  const idx = p.findIndex(x => x.sembol === sembol);
-  if (idx >= 0) p[idx] = {sembol,adet,maliyet};
-  else p.push({sembol,adet,maliyet});
-  localStorage.setItem('portfoy', JSON.stringify(p));
-  document.getElementById('p-sembol').value = '';
-  document.getElementById('p-adet').value = '';
-  document.getElementById('p-maliyet').value = '';
-  portfoyGuncelle();
-}
-
-function portfoySil(s) {
-  const p = JSON.parse(localStorage.getItem('portfoy')||'[]').filter(x => x.sembol !== s);
-  localStorage.setItem('portfoy', JSON.stringify(p));
-  portfoyGuncelle();
-}
-
-function portfoyGuncelle() {
-  const p = JSON.parse(localStorage.getItem('portfoy')||'[]');
-  const tbl = document.getElementById('portfoy-tablo');
-  const ozet = document.getElementById('portfoy-ozet');
-  if (!p.length) {
-    tbl.innerHTML = '<div class="empty-state">Portföy boş.</div>';
-    if (ozet) ozet.style.display = 'none';
-    return;
-  }
-  let h = '<table class="tablo"><thead><tr><th>Hisse</th><th>Adet</th><th>Maliyet</th><th>Güncel</th><th>Piyasa D.</th><th>K/Z</th><th>K/Z %</th><th></th></tr></thead><tbody>';
-  let totM = 0, totD = 0;
-  p.forEach(x => {
-    const gun = guncelFiyatlar[x.sembol] || null;
-    const pd = gun !== null ? gun * x.adet : null;
-    const md = x.maliyet * x.adet;
-    const kz = pd !== null ? pd - md : null;
-    const kzp = gun !== null ? (gun - x.maliyet) / x.maliyet * 100 : null;
-    const r = kz !== null ? (kz>=0?'green':'red') : '';
-    totM += md;
-    if (pd !== null) totD += pd;
-    h += '<tr>' +
-      '<td style="font-weight:700">' + x.sembol + '</td>' +
-      '<td>' + x.adet + '</td>' +
-      '<td>' + x.maliyet.toFixed(2) + ' ₺</td>' +
-      '<td>' + (gun !== null ? gun.toFixed(2)+' ₺' : '<span style="color:#475569">—</span>') + '</td>' +
-      '<td>' + (pd !== null ? pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺' : '—') + '</td>' +
-      '<td class="' + r + '">' + (kz !== null ? (kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺' : '—') + '</td>' +
-      '<td class="' + r + '">' + (kzp !== null ? (kzp>=0?'+':'')+kzp.toFixed(1)+'%' : '—') + '</td>' +
-      '<td><button class="btn-del" onclick="portfoySil(' + "'" + x.sembol + "'" + ')">Sil</button></td>' +
-      '</tr>';
+function haberGun(haberler){
+  let h='';
+  haberler.forEach(x=>{
+    h+='<div class="sbi"><a class="na" href="'+(x.link||'#')+'" target="_blank" rel="noopener">'+
+      '<div class="nt">'+(x.baslik||'')+'</div>'+
+      '<div class="ns">'+(x.kaynak||'')+'</div>'+
+      '</a></div>';
   });
-  tbl.innerHTML = h + '</tbody></table>';
-  const netKZ = totD - totM;
-  const netKZP = totM > 0 ? netKZ / totM * 100 : 0;
-  const nr = netKZ >= 0 ? 'green' : 'red';
-  if (ozet) {
-    ozet.style.display = 'flex';
-    ozet.innerHTML =
-      '<span>Maliyet: <strong>' + totM.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong></span>' +
-      '<span>Piyasa D.: <strong>' + totD.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺</strong></span>' +
-      '<span>Net K/Z: <strong class="' + nr + '">' + (netKZ>=0?'+':'') + netKZ.toLocaleString('tr-TR',{maximumFractionDigits:0}) + ' ₺ (%' + (netKZP>=0?'+':'') + netKZP.toFixed(1) + ')</strong></span>';
-  }
+  document.getElementById('haber-listesi').innerHTML=h||'<div class="es">Haber yok.</div>';
 }
 
-// Alarmlar
-function alarmEkle() {
-  const sembol = (document.getElementById('a-sembol').value||'').toUpperCase().trim();
-  const yon = document.getElementById('a-yon').value;
-  const fiyat = parseFloat(document.getElementById('a-fiyat').value);
-  if (!sembol || !fiyat) { alert('Sembol ve fiyat zorunlu.'); return; }
-  const a = JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  a.push({sembol, yon, fiyat, tetiklendi:false});
-  localStorage.setItem('alarmlar', JSON.stringify(a));
-  document.getElementById('a-sembol').value = '';
-  document.getElementById('a-fiyat').value = '';
-  alarmListeGuncelle();
+function portfoyEkle(){
+  const s=(document.getElementById('p-sembol').value||'').toUpperCase().trim();
+  const a=parseFloat(document.getElementById('p-adet').value);
+  const m=parseFloat(document.getElementById('p-maliyet').value);
+  if(!s||!a||!m){alert('Tüm alanları doldurun.');return;}
+  const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
+  const i=p.findIndex(x=>x.sembol===s);
+  if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
+  localStorage.setItem('portfoy',JSON.stringify(p));
+  document.getElementById('p-sembol').value='';
+  document.getElementById('p-adet').value='';
+  document.getElementById('p-maliyet').value='';
+  portfoyGun();
 }
 
-function alarmSil(i) {
-  const a = JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  a.splice(i, 1);
-  localStorage.setItem('alarmlar', JSON.stringify(a));
-  alarmListeGuncelle();
+function portfoySil(s){
+  localStorage.setItem('portfoy',JSON.stringify(JSON.parse(localStorage.getItem('portfoy')||'[]').filter(x=>x.sembol!==s)));
+  portfoyGun();
 }
 
-function alarmKontrol() {
-  const a = JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  let changed = false;
-  a.forEach((alarm, i) => {
-    if (alarm.tetiklendi) return;
-    const gun = guncelFiyatlar[alarm.sembol];
-    if (gun === undefined) return;
-    const hit = alarm.yon === 'above' ? gun >= alarm.fiyat : gun <= alarm.fiyat;
-    if (hit) {
-      a[i].tetiklendi = true;
-      changed = true;
-      const msg = alarm.sembol + ' ' + gun.toFixed(2) + ' ₺ fiyatına ' + (alarm.yon==='above'?'ulaştı':'indi');
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Fiyat Alarmı', {body: msg});
-      }
+function portfoyGun(){
+  const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
+  const tbl=document.getElementById('portfoy-tablo'), oz=document.getElementById('portfoy-ozet');
+  if(!p.length){tbl.innerHTML='<div class="es">Portföy boş.</div>';if(oz) oz.style.display='none';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Adet</th><th>Maliyet</th><th>Güncel</th><th>Piyasa D.</th><th>K/Z</th><th>K/Z %</th><th></th></tr></thead><tbody>';
+  let totM=0,totD=0;
+  p.forEach(x=>{
+    const g=fiyatlar[x.sembol]||null,pd=g!==null?g*x.adet:null,md=x.maliyet*x.adet;
+    const kz=pd!==null?pd-md:null,kzp=g!==null?(g-x.maliyet)/x.maliyet*100:null;
+    const r=kz!==null?(kz>=0?'gr':'re'):'';
+    totM+=md; if(pd!==null) totD+=pd;
+    h+='<tr><td style="font-weight:700">'+x.sembol+'</td><td>'+x.adet+'</td>'+
+      '<td>'+x.maliyet.toFixed(2)+' ₺</td>'+
+      '<td>'+(g!==null?g.toFixed(2)+' ₺':'<span style="color:var(--mu)">—</span>')+'</td>'+
+      '<td>'+(pd!==null?pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'—')+'</td>'+
+      '<td class="'+r+'">'+(kz!==null?(kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'—')+'</td>'+
+      '<td class="'+r+'">'+(kzp!==null?(kzp>=0?'+':'')+kzp.toFixed(1)+'%':'—')+'</td>'+
+      '<td><button class="bd2" onclick="portfoySil(\''+x.sembol+'\')">Sil</button></td></tr>';
+  });
+  tbl.innerHTML=h+'</tbody></table>';
+  const nkz=totD-totM,nkzp=totM>0?nkz/totM*100:0,nr=nkz>=0?'gr':'re';
+  if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺ (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
+}
+
+function alarmEkle(){
+  const s=(document.getElementById('a-sembol').value||'').toUpperCase().trim();
+  const y=document.getElementById('a-yon').value;
+  const f=parseFloat(document.getElementById('a-fiyat').value);
+  if(!s||!f){alert('Sembol ve fiyat zorunlu.');return;}
+  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+  a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
+  localStorage.setItem('alarmlar',JSON.stringify(a));
+  document.getElementById('a-sembol').value='';
+  document.getElementById('a-fiyat').value='';
+  alarmGun();
+}
+
+function alarmSil(i){
+  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+  a.splice(i,1);localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();
+}
+
+function alarmKontrol(){
+  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+  let ch=false;
+  a.forEach((alarm,i)=>{
+    if(alarm.tetiklendi) return;
+    const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
+    const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
+    if(hit){a[i].tetiklendi=true;ch=true;
+      if('Notification' in window&&Notification.permission==='granted')
+        new Notification('Fiyat Alarmı',{body:alarm.sembol+' → '+g.toFixed(2)+' ₺'});
     }
   });
-  if (changed) { localStorage.setItem('alarmlar', JSON.stringify(a)); alarmListeGuncelle(); }
+  if(ch){localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();}
 }
 
-function alarmListeGuncelle() {
-  const a = JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  const el = document.getElementById('alarm-listesi');
-  if (!el) return;
-  if (!a.length) { el.innerHTML = '<div class="empty-state">Henüz alarm yok.</div>'; return; }
-  let h = '<table class="tablo"><thead><tr><th>Hisse</th><th>Koşul</th><th>Hedef</th><th>Güncel</th><th>Durum</th><th></th></tr></thead><tbody>';
-  a.forEach((x, i) => {
-    const gun = guncelFiyatlar[x.sembol];
-    const durum = x.tetiklendi ?
-      '<span class="alarm-badge alarm-hit">Tetiklendi</span>' :
-      '<span class="alarm-badge">Bekliyor</span>';
-    h += '<tr>' +
-      '<td style="font-weight:700">' + x.sembol + '</td>' +
-      '<td>' + (x.yon==='above'?'↑ Üstüne':'↓ Altına') + '</td>' +
-      '<td>' + x.fiyat.toFixed(2) + ' ₺</td>' +
-      '<td>' + (gun !== undefined ? gun.toFixed(2)+' ₺' : '—') + '</td>' +
-      '<td>' + durum + '</td>' +
-      '<td><button class="btn-del" onclick="alarmSil(' + i + ')">Sil</button></td>' +
-      '</tr>';
+function alarmGun(){
+  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+  const el=document.getElementById('alarm-listesi');
+  if(!el) return;
+  if(!a.length){el.innerHTML='<div class="es">Henüz alarm yok.</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Koşul</th><th>Hedef</th><th>Güncel</th><th>Durum</th><th></th></tr></thead><tbody>';
+  a.forEach((x,i)=>{
+    const g=fiyatlar[x.sembol];
+    const du=x.tetiklendi?'<span class="alb alh">Tetiklendi</span>':'<span class="alb">Bekliyor</span>';
+    h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
+      '<td>'+(x.yon==='above'?'↑ Üstüne':'↓ Altına')+'</td>'+
+      '<td>'+x.fiyat.toFixed(2)+' ₺</td>'+
+      '<td>'+(g!==undefined?g.toFixed(2)+' ₺':'—')+'</td>'+
+      '<td>'+du+'</td>'+
+      '<td><button class="bd2" onclick="alarmSil('+i+')">Sil</button></td></tr>';
   });
-  el.innerHTML = h + '</tbody></table>';
-  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  el.innerHTML=h+'</tbody></table>';
+  if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();
 }
 
-alarmListeGuncelle();
-portfoyGuncelle();
-veriCek();
-setInterval(veriCek, 10000);
+alarmGun(); portfoyGun(); veriCek(); setInterval(veriCek,10000);
 </script>
 </body>
 </html>'''
@@ -766,6 +683,71 @@ def piyasa_bilgisi_cek():
         return {'rejim':'YATAY','emoji':'🟡','aciklama':'Veri alınamadı',
                 'carpani':0.9,'bist_son':0,'bist_rsi':50,
                 'bist_getiri_1ay':0,'usdtry':0,'kur_degisim':0}
+
+def kenar_verileri_cek():
+    gruplar = {
+        'kripto': {
+            'BTC-USD':'Bitcoin','ETH-USD':'Ethereum',
+            'BNB-USD':'BNB','XRP-USD':'XRP','SOL-USD':'Solana'
+        },
+        'doviz': {
+            'USDTRY=X':'USD/TRY','EURTRY=X':'EUR/TRY',
+            'GBPTRY=X':'GBP/TRY','JPYTRY=X':'JPY/TRY (x100)'
+        },
+        'emtia': {
+            'GC=F':'Altın (oz)','SI=F':'Gümüş (oz)',
+            'PL=F':'Platin (oz)','PA=F':'Paladyum (oz)'
+        }
+    }
+    sonuc = {}
+    for grup, isimler in gruplar.items():
+        liste = []
+        for sembol, isim in isimler.items():
+            try:
+                df = yf.Ticker(sembol).history(period='5d', interval='1d').dropna()
+                if len(df) >= 2:
+                    son     = float(df['Close'].iloc[-1])
+                    onceki  = float(df['Close'].iloc[-2])
+                    if grup == 'doviz' and 'JPY' in sembol:
+                        son *= 100
+                        onceki *= 100
+                    degisim = (son - onceki) / onceki * 100 if onceki else 0.0
+                elif len(df) == 1:
+                    son = float(df['Close'].iloc[-1])
+                    if grup == 'doviz' and 'JPY' in sembol:
+                        son *= 100
+                    degisim = 0.0
+                else:
+                    continue
+                liste.append({'name': isim, 'symbol': sembol,
+                              'fiyat': round(son, 2), 'degisim': round(degisim, 2)})
+            except:
+                pass
+        sonuc[grup] = liste
+    return sonuc
+
+def haber_cek():
+    haberler = []
+    if _feedparser is None:
+        return haberler
+    for url, kaynak in [
+        ("https://www.finansgundem.com/rss/haberler.xml", "Finans Gündem"),
+        ("https://www.bloomberght.com/rss", "Bloomberg HT"),
+        ("https://feeds.reuters.com/reuters/businessNews", "Reuters"),
+    ]:
+        try:
+            feed = _feedparser.parse(url)
+            for entry in feed.entries[:5]:
+                baslik = entry.get('title', '').strip()
+                if baslik:
+                    haberler.append({
+                        'baslik': baslik[:90],
+                        'kaynak': kaynak,
+                        'link'  : entry.get('link', '#')
+                    })
+        except:
+            pass
+    return haberler[:15]
 
 def ozellikler_ekle(df):
     df = df.copy()
@@ -842,6 +824,15 @@ def model_egit(sembol):
     model.fit(X_e, y[:bolme])
     return model, scaler, df
 
+def guvenli_sayi(x, default=0):
+    try:
+        x = float(x)
+        if math.isnan(x) or math.isinf(x):
+            return default
+        return x
+    except:
+        return default
+
 def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
     try:
         ticker    = yf.Ticker(sembol)
@@ -867,15 +858,15 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
             hedef = round(guvenli_sayi(son_fiyat + atr * 2.5), 2)
             stop  = round(guvenli_sayi(son_fiyat - atr * 1.5), 2)
         return {
-    'sembol' : sembol,
-    'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
-    'degisim': round(guvenli_sayi(degisim), 2),
-    'rsi'    : round(guvenli_sayi(df['RSI'].iloc[-1]), 1),
-    'karar'  : karar,
-    'guven'  : round(guvenli_sayi(guven), 3),
-    'hedef'  : hedef,
-    'stop'   : stop,
-}
+            'sembol' : sembol,
+            'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
+            'degisim': round(guvenli_sayi(degisim), 2),
+            'rsi'    : round(guvenli_sayi(df['RSI'].iloc[-1]), 1),
+            'karar'  : karar,
+            'guven'  : round(guvenli_sayi(guven), 3),
+            'hedef'  : hedef,
+            'stop'   : stop,
+        }
     except:
         return None
 
@@ -971,6 +962,16 @@ def sistem_baslat():
             SISTEM_VERISI['grafik_verisi']  = grafik_v
             SISTEM_VERISI['son_guncelleme'] = datetime.now().strftime("%H:%M:%S")
 
+            try:
+                SISTEM_VERISI['kenar'] = kenar_verileri_cek()
+            except Exception as e:
+                print(f"Kenar veri hatası: {e}")
+
+            try:
+                SISTEM_VERISI['haberler'] = haber_cek()
+            except Exception as e:
+                print(f"Haber hatası: {e}")
+
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(sinyaller)} sinyal güncellendi.")
         except Exception as e:
             print(f"Güncelleme hatası: {e}")
@@ -981,15 +982,6 @@ def sistem_baslat():
 def index():
     return render_template_string(HTML, hisseler=HISSELER)
 
-def guvenli_sayi(x, default=0):
-    try:
-        x = float(x)
-        if math.isnan(x) or math.isinf(x):
-            return default
-        return x
-    except:
-        return default
-    
 def json_temizle(data):
     if isinstance(data, dict):
         return {k: json_temizle(v) for k, v in data.items()}
@@ -1001,6 +993,7 @@ def json_temizle(data):
         return data
     else:
         return data
+
 _egitim_basladi = False
 
 @app.route('/api/veri')
@@ -1013,19 +1006,21 @@ def api_veri():
 
     tr_data = track_record_oku()
     data = {
-        'hazir': SISTEM_VERISI['hazir'],
-        'sinyaller': SISTEM_VERISI['sinyaller'],
-        'piyasa': SISTEM_VERISI['piyasa'],
-        'grafik_verisi': SISTEM_VERISI['grafik_verisi'],
-        'borsa_acik': borsa_acik_mi(),
+        'hazir'         : SISTEM_VERISI['hazir'],
+        'sinyaller'     : SISTEM_VERISI['sinyaller'],
+        'piyasa'        : SISTEM_VERISI['piyasa'],
+        'grafik_verisi' : SISTEM_VERISI['grafik_verisi'],
+        'borsa_acik'    : borsa_acik_mi(),
         'son_guncelleme': SISTEM_VERISI['son_guncelleme'],
-        'track_record': tr_data,
+        'track_record'  : tr_data,
+        'kenar'         : SISTEM_VERISI['kenar'],
+        'haberler'      : SISTEM_VERISI['haberler'],
     }
     return jsonify(json_temizle(data))
 
 if __name__ == '__main__':
     print("\n" + "="*55)
-    print("  BIST TRADING DASHBOARD BAŞLATILIYOR")
+    print("  LIDYA BORSA PLATFORMU BAŞLATILIYOR")
     print(f"  Tarayıcıda aç: http://localhost:{PORT}")
     print("  Durdurmak için CTRL+C")
     print("="*55)

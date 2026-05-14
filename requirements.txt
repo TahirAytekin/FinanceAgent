@@ -9,3 +9,4 @@ xgboost
 lightgbm
 requests
 python-dotenv
+feedparser
