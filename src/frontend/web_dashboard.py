@@ -518,10 +518,13 @@ def track_record_oku():
         basari  = kazanan / len(tamamlanan) * 100
         ort_kar = tamamlanan['kar_zarar'].astype(float).mean()
         # Her hisse için sadece en son kaydı göster
-        son_sinyaller = (df.sort_values('zaman')
+        df['_dt'] = pd.to_datetime(df['zaman'], dayfirst=True)
+        son_sinyaller = (df.sort_values('_dt')
                            .groupby('sembol', as_index=False).last()
-                           .sort_values('zaman', ascending=False)
+                           .sort_values('_dt', ascending=False)
+                           .drop(columns=['_dt'])
                            .to_dict('records'))
+        df.drop(columns=['_dt'], inplace=True)
         return {
             'toplam'      : len(df),
             'tamamlanan'  : len(tamamlanan),
