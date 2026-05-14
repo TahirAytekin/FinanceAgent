@@ -328,6 +328,8 @@ function sayfaGun(data){
   d.className='badge'+(b?'':' kapali');
   const sg=document.getElementById('son-guncelleme');
   if(sg) sg.textContent=data.son_guncelleme||'';
+  if(data.kenar) kenarGun(data.kenar);
+  if(data.haberler&&data.haberler.length) haberGun(data.haberler);
   if(!data.hazir) return;
 
   const rejim=(data.piyasa&&data.piyasa.rejim)||'YATAY';
@@ -361,8 +363,6 @@ function sayfaGun(data){
   sektorGun(sn);
   tabloGun(sn);
   trTabGun(tr);
-  if(data.kenar) kenarGun(data.kenar);
-  if(data.haberler&&data.haberler.length) haberGun(data.haberler);
 }
 
 const SMAP={AKBNK:'Bankacılık',GARAN:'Bankacılık',YKBNK:'Bankacılık',EKGYO:'Gayrimenkul',PGSUS:'Havacılık',THYAO:'Havacılık',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Çelik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
@@ -918,6 +918,18 @@ def track_record_oku():
                 'basari':0,'ort_kar':0,'son_sinyaller':[],'tamamlanan_liste':[]}
 
 def sistem_baslat():
+    # Kenar veriler ve haberler model eğitimini beklemeden hemen çekilir
+    try:
+        SISTEM_VERISI['kenar'] = kenar_verileri_cek()
+        print("Kenar veriler hazır.")
+    except Exception as e:
+        print(f"Kenar veri hatası: {e}")
+    try:
+        SISTEM_VERISI['haberler'] = haber_cek()
+        print(f"Haberler hazır: {len(SISTEM_VERISI['haberler'])} haber")
+    except Exception as e:
+        print(f"Haber hatası: {e}")
+
     print("\nModeller eğitiliyor...")
     for s in HISSELER:
         for deneme in range(3):
