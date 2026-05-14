@@ -479,8 +479,8 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
             hedef = round(guvenli_sayi(son_fiyat - atr * 2.5), 2)
             stop  = round(guvenli_sayi(son_fiyat + atr * 1.5), 2)
         else:
-            hedef = None
-            stop  = None
+            hedef = round(guvenli_sayi(son_fiyat + atr * 2.5), 2)
+            stop  = round(guvenli_sayi(son_fiyat - atr * 1.5), 2)
         return {
     'sembol' : sembol,
     'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
