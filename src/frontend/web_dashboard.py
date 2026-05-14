@@ -71,7 +71,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sb-r{border-left:1px solid var(--bd);}
 .sb::-webkit-scrollbar{width:3px;}.sb::-webkit-scrollbar-thumb{background:var(--bd);}
 .main{flex:1;min-width:0;}
-.sbt{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.1em;padding:11px 12px 7px;border-bottom:1px solid var(--bd);}
+.sbt{font-size:11px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.08em;padding:11px 12px 7px;border-bottom:1px solid var(--bd);}
 .sbi{padding:8px 12px;border-bottom:1px solid rgba(46,42,72,.35);transition:background .15s;}
 .sbi:hover{background:var(--card);}
 .prow{display:flex;justify-content:space-between;align-items:center;}
@@ -85,12 +85,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sbnote{padding:9px 12px;font-size:9px;color:var(--mu);border-top:1px solid var(--bd);}
 .con{padding:14px 18px;}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px;}
-.ctit{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.07em;margin-bottom:11px;}
+.ctit{font-size:12px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.07em;margin-bottom:11px;}
 .sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
 .sc{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:13px;}
 .sh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px;}
-.sl{font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;}
-.si{font-size:15px;opacity:.55;}
+.sl{font-size:11px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.04em;}
 .sv{font-size:22px;font-weight:700;color:var(--tx);line-height:1.1;}
 .ss{font-size:11px;color:var(--mu);margin-top:4px;}
 .rb{display:inline-block;padding:4px 11px;border-radius:6px;font-weight:600;font-size:13px;}
@@ -124,7 +123,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .pb:hover{border-color:rgba(167,139,250,.4);}
 .trg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
 .trs{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;text-align:center;}
-.trl{font-size:10px;color:var(--mu);text-transform:uppercase;margin-bottom:6px;}
+.trl{font-size:11px;font-weight:700;color:var(--tx);text-transform:uppercase;margin-bottom:6px;}
 .trv{font-size:20px;font-weight:700;}
 .pf{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
 .pi{background:var(--sf);border:1px solid var(--bd);color:var(--tx);padding:6px 10px;border-radius:7px;font-size:12px;outline:none;flex:1;min-width:100px;}
@@ -177,22 +176,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="con">
   <div class="sg">
     <div class="sc">
-      <div class="sh"><div class="sl">Piyasa Rejimi</div><div class="si">🌐</div></div>
+      <div class="sh"><div class="sl">Piyasa Rejimi</div></div>
       <div id="rejim-badge" class="rb rb-y">—</div>
       <div class="ss" id="rejim-aciklama">Yükleniyor...</div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">Aktif Sinyaller</div><div class="si">🎯</div></div>
+      <div class="sh"><div class="sl">Aktif Sinyaller</div></div>
       <div class="sv" id="sinyal-sayisi">—</div>
       <div class="ss" id="sinyal-ozet">AL / SAT / BEKLE</div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">BIST100</div><div class="si">📊</div></div>
+      <div class="sh"><div class="sl">BIST100</div></div>
       <div class="sv" id="bist-deger">—</div>
       <div class="ss" id="bist-sub">USD/TRY: —</div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">Başarı Oranı</div><div class="si">🏆</div></div>
+      <div class="sh"><div class="sl">Başarı Oranı</div></div>
       <div class="sv" id="basari-deger">—</div>
       <div class="ss" id="basari-sub">Tamamlanan: —</div>
     </div>
@@ -286,13 +285,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <!-- RIGHT: Fiyatlar -->
 <aside class="sb sb-r">
-  <div class="sbt">₿ Kripto</div>
+  <div class="sbt">Kripto</div>
   <div id="kripto-listesi"><div class="es">Yükleniyor...</div></div>
   <div style="height:1px;background:var(--bd)"></div>
-  <div class="sbt">💱 Döviz</div>
+  <div class="sbt">Döviz</div>
   <div id="doviz-listesi"><div class="es">Yükleniyor...</div></div>
   <div style="height:1px;background:var(--bd)"></div>
-  <div class="sbt">🥇 Emtia</div>
+  <div class="sbt">Emtia</div>
   <div id="emtia-listesi"><div class="es">Yükleniyor...</div></div>
   <div class="sbnote">5 dk. güncelleme · Yahoo Finance</div>
 </aside>
