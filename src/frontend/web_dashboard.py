@@ -566,7 +566,7 @@ function portfoyGun(){
       '<td>'+(pd!==null?pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
       '<td class="'+r+'">'+(kz!==null?(kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
       '<td class="'+r+'">'+(kzp!==null?(kzp>=0?'+':'')+kzp.toFixed(1)+'%':'-')+'</td>'+
-      '<td><button class="bd2" onclick="portfoySil(\''+x.sembol+'\')">Sil</button></td></tr>';
+      '<td><button class="bd2" onclick="portfoySil(\\\''+x.sembol+'\\\')">Sil</button></td></tr>';
   });
   tbl.innerHTML=h+'</tbody></table>';
   const nkz=totD-totM,nkzp=totM>0?nkz/totM*100:0,nr=nkz>=0?'gr':'re';
