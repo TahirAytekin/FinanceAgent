@@ -324,7 +324,7 @@ function veriCek(){
 
 function sayfaGun(data){
   const b=data.borsa_acik, d=document.getElementById('borsa-durum');
-  d.textContent=b?'● BORSA AÇIK':'● BORSA KAPALI';
+  d.textContent=b?'BORSA ACIK':'BORSA KAPALI';
   d.className='badge'+(b?'':' kapali');
   const sg=document.getElementById('son-guncelleme');
   if(sg) sg.textContent=data.son_guncelleme||'';
@@ -356,8 +356,8 @@ function sayfaGun(data){
     bd.className='sv '+br; bd.textContent='%'+tr.basari;
     document.getElementById('basari-sub').innerHTML='Tamamlanan: '+tr.tamamlanan+' | <span class="'+kr+'">%'+(tr.ort_kar>0?'+':'')+tr.ort_kar+'</span>';
   }else{
-    document.getElementById('basari-deger').textContent='—';
-    document.getElementById('basari-sub').textContent='Henüz tamamlanan yok';
+    document.getElementById('basari-deger').textContent='--';
+    document.getElementById('basari-sub').textContent='Tamamlanan yok';
   }
 
   sektorGun(sn);
@@ -365,12 +365,11 @@ function sayfaGun(data){
   trTabGun(tr);
 }
 
-const SMAP={AKBNK:'Bankacılık',GARAN:'Bankacılık',YKBNK:'Bankacılık',EKGYO:'Gayrimenkul',PGSUS:'Havacılık',THYAO:'Havacılık',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Çelik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
-const SICON={'Bankacılık':'🏦','Gayrimenkul':'🏢','Havacılık':'✈️','Telekom':'📡','Cam & Kimya':'🧪','Otomotiv':'🚗','Demir & Çelik':'⚙️','Savunma':'🛡️','Petrol & Enerji':'⛽'};
+const SMAP={AKBNK:'Bankacilik',GARAN:'Bankacilik',YKBNK:'Bankacilik',EKGYO:'Gayrimenkul',PGSUS:'Havacilik',THYAO:'Havacilik',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Celik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
 
 function sektorGun(sn){
   const s={};
-  sn.forEach(x=>{const k=x.sembol.replace('.IS',''),sek=SMAP[k]||'Diğer';
+  sn.forEach(x=>{const k=x.sembol.replace('.IS',''),sek=SMAP[k]||'Diger';
     if(!s[sek]) s[sek]={al:0,sat:0,bk:0,d:[]};
     if(x.karar==='AL') s[sek].al++; else if(x.karar==='SAT') s[sek].sat++; else s[sek].bk++;
     s[sek].d.push(x.degisim||0);
@@ -379,28 +378,28 @@ function sektorGun(sn){
   Object.entries(s).forEach(([sek,b])=>{
     const ort=b.d.length?b.d.reduce((a,v)=>a+v,0)/b.d.length:0;
     const r=ort>0?'gr':ort<0?'re':'ye';
-    const du=b.al>b.sat?'AL ağırlıklı':b.sat>b.al?'SAT ağırlıklı':'Karışık';
-    h+='<div class="ek"><div class="eik">'+(SICON[sek]||'📦')+'</div><div class="enm">'+sek+'</div><div class="ev '+r+'">'+(ort>=0?'+':'')+ort.toFixed(1)+'%</div><div class="ed">'+du+'</div></div>';
+    const du=b.al>b.sat?'AL agirlikli':b.sat>b.al?'SAT agirlikli':'Karisik';
+    h+='<div class="ek"><div class="enm">'+sek+'</div><div class="ev '+r+'">'+(ort>=0?'+':'')+ort.toFixed(1)+'%</div><div class="ed">'+du+'</div></div>';
   });
-  document.getElementById('sektor-grid').innerHTML=h||'<div class="es">Yükleniyor...</div>';
+  document.getElementById('sektor-grid').innerHTML=h||'<div class="es">Yukleniyor...</div>';
 }
 
 function tabloGun(sn){
-  if(!sn||!sn.length){document.getElementById('sinyal-tablo-alani').innerHTML='<div class="es">Modeller eğitiliyor...</div>';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Değişim</th><th>RSI</th><th>Karar</th><th>Güven</th><th>Hedef</th><th>Stop</th></tr></thead><tbody>';
+  if(!sn||!sn.length){document.getElementById('sinyal-tablo-alani').innerHTML='<div class="es">Modeller egitiliyor...</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Degisim</th><th>RSI</th><th>Karar</th><th>Guven</th><th>Hedef</th><th>Stop</th></tr></thead><tbody>';
   sn.forEach(s=>{
     const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
     const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
     const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
     h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+'</td>'+
-      '<td>'+Number(s.fiyat).toFixed(2)+' ₺</td>'+
+      '<td>'+Number(s.fiyat).toFixed(2)+' TL</td>'+
       '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
       '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
       '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
       '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
-      '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' ₺':'—')+'</td>'+
-      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' ₺':'—')+'</td></tr>';
+      '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
+      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' TL':'-')+'</td></tr>';
   });
   document.getElementById('sinyal-tablo-alani').innerHTML=h+'</tbody></table>';
 }
@@ -430,7 +429,7 @@ function grafikGuncelle(){
     {type:'scatter',x:tar,y:m20,name:'MA20',line:{color:'#f59e0b',width:1.5},opacity:.9},
     {type:'scatter',x:tar,y:m50,name:'MA50',line:{color:'#8b5cf6',width:1.5},opacity:.9}
   ],{...BL,xaxis:{gridcolor:CGR,rangeslider:{visible:false},type:'date'},
-     yaxis:{gridcolor:CGR,ticksuffix:' ₺'},
+     yaxis:{gridcolor:CGR,ticksuffix:' TL'},
      legend:{bgcolor:CBG+'aa',font:{size:10}},showlegend:true},
   {responsive:true,displayModeBar:false});
 
@@ -458,26 +457,26 @@ function trTabGun(tr){
   document.getElementById('tr-toplam').textContent=tr.toplam;
   document.getElementById('tr-tamamlanan').textContent=tr.tamamlanan;
   const tb=document.getElementById('tr-basari'); tb.className='trv '+br;
-  tb.textContent=tr.tamamlanan>0?'%'+tr.basari:'—';
+  tb.textContent=tr.tamamlanan>0?'%'+tr.basari:'-';
   const tk=document.getElementById('tr-ort-kar'); tk.className='trv '+kr;
-  tk.textContent=tr.tamamlanan>0?'%'+(tr.ort_kar>0?'+':'')+tr.ort_kar:'—';
+  tk.textContent=tr.tamamlanan>0?'%'+(tr.ort_kar>0?'+':'')+tr.ort_kar:'-';
   if(!tr.son_sinyaller||!tr.son_sinyaller.length){
-    document.getElementById('track-record-alani').innerHTML='<div class="es">Henüz tamamlanan sinyal yok.</div>';return;
+    document.getElementById('track-record-alani').innerHTML='<div class="es">Henuz tamamlanan sinyal yok.</div>';return;
   }
-  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Karar</th><th>Giriş</th><th>Hedef</th><th>Stop</th><th>Çıkış</th><th>K/Z</th><th>Sonuç</th></tr></thead><tbody>';
+  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Karar</th><th>Giris</th><th>Hedef</th><th>Stop</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
   tr.son_sinyaller.forEach(s=>{
     const kzv=s.kar_zarar?parseFloat(s.kar_zarar):null;
     const sr=s.sonuc==='KAZANDI'?'gr':s.sonuc==='KAYBETTI'?'re':'ye';
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
     const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
-    const kzs=kzv!=null?'<span class="'+(kzv>=0?'gr':'re')+'">%'+(kzv>0?'+':'')+kzv.toFixed(1)+'</span>':'—';
-    h+='<tr class="'+rc+'"><td style="font-size:10px;white-space:nowrap">'+(s.zaman||'—')+'</td>'+
+    const kzs=kzv!=null?'<span class="'+(kzv>=0?'gr':'re')+'">%'+(kzv>0?'+':'')+kzv.toFixed(1)+'</span>':'-';
+    h+='<tr class="'+rc+'"><td style="font-size:10px;white-space:nowrap">'+(s.zaman||'-')+'</td>'+
       '<td style="font-weight:700">'+(s.sembol||'').replace('.IS','')+'</td>'+
       '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
-      '<td>'+(s.fiyat_giris?parseFloat(s.fiyat_giris).toFixed(2)+' ₺':'—')+'</td>'+
-      '<td class="gr">'+(s.hedef?parseFloat(s.hedef).toFixed(2)+' ₺':'—')+'</td>'+
-      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?parseFloat(s.stop).toFixed(2)+' ₺':'—')+'</td>'+
-      '<td>'+(s.fiyat_cikis?parseFloat(s.fiyat_cikis).toFixed(2)+' ₺':'—')+'</td>'+
+      '<td>'+(s.fiyat_giris?parseFloat(s.fiyat_giris).toFixed(2)+' TL':'-')+'</td>'+
+      '<td class="gr">'+(s.hedef?parseFloat(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
+      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?parseFloat(s.stop).toFixed(2)+' TL':'-')+'</td>'+
+      '<td>'+(s.fiyat_cikis?parseFloat(s.fiyat_cikis).toFixed(2)+' TL':'-')+'</td>'+
       '<td>'+kzs+'</td>'+
       '<td class="'+sr+'" style="font-weight:600">'+(s.sonuc||'Bekliyor')+'</td></tr>';
   });
@@ -493,19 +492,19 @@ function perfCiz(){
   Plotly.newPlot('perf-grafik',[{type:'scatter',x:xs,y:ys,mode:'lines+markers',
     line:{color:'#6366f1',width:2},marker:{color:ys.map(v=>v>=0?'#22c55e':'#ef4444'),size:5},
     fill:'tozeroy',fillcolor:last>=0?'rgba(34,197,94,.06)':'rgba(239,68,68,.06)',
-    text:txts,hovertemplate:'%{text}<br>Kümülatif: %{y:.1f}%<extra></extra>'}],
+    text:txts,hovertemplate:'%{text}<br>Kumulatif: %{y:.1f}%<extra></extra>'}],
   {paper_bgcolor:CBG,plot_bgcolor:CBG,font:{color:CFN,size:11},
    xaxis:{gridcolor:CGR,title:'Sinyal #'},yaxis:{gridcolor:CGR,ticksuffix:'%',zeroline:true,zerolinecolor:'#2e2a48'},
    margin:{t:6,r:10,b:36,l:50},showlegend:false},
   {responsive:true,displayModeBar:false});
 }
 
-function fp(v,d){return v==null?'—':Number(v).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function fp(v,d){return v==null?'-':Number(v).toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d});}
 
 function kenarGun(kenar){
   ['kripto','doviz','emtia'].forEach(grp=>{
     if(!kenar[grp]||!kenar[grp].length) return;
-    const pfx=grp==='kripto'?'$':grp==='doviz'?'₺':'$';
+    const pfx=grp==='kripto'?'$':grp==='doviz'?'TL':'$';
     const dec=grp==='emtia'?1:2;
     let h='';
     kenar[grp].forEach(x=>{
@@ -534,7 +533,7 @@ function portfoyEkle(){
   const s=(document.getElementById('p-sembol').value||'').toUpperCase().trim();
   const a=parseFloat(document.getElementById('p-adet').value);
   const m=parseFloat(document.getElementById('p-maliyet').value);
-  if(!s||!a||!m){alert('Tüm alanları doldurun.');return;}
+  if(!s||!a||!m){alert('Tum alanlari doldurun.');return;}
   const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
   const i=p.findIndex(x=>x.sembol===s);
   if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
@@ -553,8 +552,8 @@ function portfoySil(s){
 function portfoyGun(){
   const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
   const tbl=document.getElementById('portfoy-tablo'), oz=document.getElementById('portfoy-ozet');
-  if(!p.length){tbl.innerHTML='<div class="es">Portföy boş.</div>';if(oz) oz.style.display='none';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Adet</th><th>Maliyet</th><th>Güncel</th><th>Piyasa D.</th><th>K/Z</th><th>K/Z %</th><th></th></tr></thead><tbody>';
+  if(!p.length){tbl.innerHTML='<div class="es">Portfoy bos.</div>';if(oz) oz.style.display='none';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Adet</th><th>Maliyet</th><th>Guncel</th><th>Piyasa D.</th><th>K/Z</th><th>K/Z %</th><th></th></tr></thead><tbody>';
   let totM=0,totD=0;
   p.forEach(x=>{
     const g=fiyatlar[x.sembol]||null,pd=g!==null?g*x.adet:null,md=x.maliyet*x.adet;
@@ -562,16 +561,16 @@ function portfoyGun(){
     const r=kz!==null?(kz>=0?'gr':'re'):'';
     totM+=md; if(pd!==null) totD+=pd;
     h+='<tr><td style="font-weight:700">'+x.sembol+'</td><td>'+x.adet+'</td>'+
-      '<td>'+x.maliyet.toFixed(2)+' ₺</td>'+
-      '<td>'+(g!==null?g.toFixed(2)+' ₺':'<span style="color:var(--mu)">—</span>')+'</td>'+
-      '<td>'+(pd!==null?pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'—')+'</td>'+
-      '<td class="'+r+'">'+(kz!==null?(kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺':'—')+'</td>'+
-      '<td class="'+r+'">'+(kzp!==null?(kzp>=0?'+':'')+kzp.toFixed(1)+'%':'—')+'</td>'+
+      '<td>'+x.maliyet.toFixed(2)+' TL</td>'+
+      '<td>'+(g!==null?g.toFixed(2)+' TL':'<span style="color:var(--mu)">-</span>')+'</td>'+
+      '<td>'+(pd!==null?pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
+      '<td class="'+r+'">'+(kz!==null?(kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
+      '<td class="'+r+'">'+(kzp!==null?(kzp>=0?'+':'')+kzp.toFixed(1)+'%':'-')+'</td>'+
       '<td><button class="bd2" onclick="portfoySil(\''+x.sembol+'\')">Sil</button></td></tr>';
   });
   tbl.innerHTML=h+'</tbody></table>';
   const nkz=totD-totM,nkzp=totM>0?nkz/totM*100:0,nr=nkz>=0?'gr':'re';
-  if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' ₺ (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
+  if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
 }
 
 function alarmEkle(){
@@ -601,7 +600,7 @@ function alarmKontrol(){
     const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
     if(hit){a[i].tetiklendi=true;ch=true;
       if('Notification' in window&&Notification.permission==='granted')
-        new Notification('Fiyat Alarmı',{body:alarm.sembol+' → '+g.toFixed(2)+' ₺'});
+        new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
     }
   });
   if(ch){localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();}
@@ -611,15 +610,15 @@ function alarmGun(){
   const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
   const el=document.getElementById('alarm-listesi');
   if(!el) return;
-  if(!a.length){el.innerHTML='<div class="es">Henüz alarm yok.</div>';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Koşul</th><th>Hedef</th><th>Güncel</th><th>Durum</th><th></th></tr></thead><tbody>';
+  if(!a.length){el.innerHTML='<div class="es">Henuz alarm yok.</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Kosul</th><th>Hedef</th><th>Guncel</th><th>Durum</th><th></th></tr></thead><tbody>';
   a.forEach((x,i)=>{
     const g=fiyatlar[x.sembol];
     const du=x.tetiklendi?'<span class="alb alh">Tetiklendi</span>':'<span class="alb">Bekliyor</span>';
     h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
-      '<td>'+(x.yon==='above'?'↑ Üstüne':'↓ Altına')+'</td>'+
-      '<td>'+x.fiyat.toFixed(2)+' ₺</td>'+
-      '<td>'+(g!==undefined?g.toFixed(2)+' ₺':'—')+'</td>'+
+      '<td>'+(x.yon==='above'?'Yukari':'Asagi')+'</td>'+
+      '<td>'+x.fiyat.toFixed(2)+' TL</td>'+
+      '<td>'+(g!==undefined?g.toFixed(2)+' TL':'-')+'</td>'+
       '<td>'+du+'</td>'+
       '<td><button class="bd2" onclick="alarmSil('+i+')">Sil</button></td></tr>';
   });
