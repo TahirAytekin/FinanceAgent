@@ -725,27 +725,33 @@ def kenar_verileri_cek():
     return sonuc
 
 def haber_cek():
-    haberler = []
     if _feedparser is None:
-        return haberler
-    for url, kaynak in [
-        ("https://www.finansgundem.com/rss/haberler.xml", "Finans Gündem"),
-        ("https://www.bloomberght.com/rss", "Bloomberg HT"),
-        ("https://feeds.reuters.com/reuters/businessNews", "Reuters"),
-    ]:
+        return []
+    kaynaklar = [
+        ("https://www.bloomberght.com/rss",                          "Bloomberg HT"),
+        ("https://www.haberturk.com/rss/ekonomi.xml",                "Haberturk"),
+        ("https://borsagundem.com/feed",                             "Borsa Gundem"),
+        ("https://paraanaliz.com/feed/",                             "Para Analiz"),
+        ("https://www.sabah.com.tr/rss/ekonomi.xml",                 "Sabah Ekonomi"),
+        ("https://www.dunya.com/feeds/rss",                          "Dunya Gazetesi"),
+        ("https://www.finansgundem.com/rss/haberler.xml",            "Finans Gundem"),
+        ("https://feeds.reuters.com/reuters/businessNews",           "Reuters"),
+    ]
+    gruplar = []
+    for url, kaynak in kaynaklar:
         try:
             feed = _feedparser.parse(url)
-            for entry in feed.entries[:5]:
-                baslik = entry.get('title', '').strip()
+            for entry in (feed.entries or [])[:3]:
+                baslik = (entry.get('title') or '').strip()
                 if baslik:
-                    haberler.append({
+                    gruplar.append({
                         'baslik': baslik[:90],
                         'kaynak': kaynak,
                         'link'  : entry.get('link', '#')
                     })
         except:
             pass
-    return haberler[:15]
+    return gruplar[:20]
 
 def ozellikler_ekle(df):
     df = df.copy()
