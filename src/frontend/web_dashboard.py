@@ -135,9 +135,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .alh{background:rgba(34,197,94,.12);color:var(--gr);border-color:rgba(34,197,94,.2);}
 .es{text-align:center;padding:22px;color:var(--mu);font-size:12px;}
 .gr{color:var(--gr);}.re{color:var(--re);}.ye{color:var(--ye);}
+.sirket-kart{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;}
+.sirket-kart:hover{border-color:rgba(167,139,250,.5);transform:translateY(-2px);}
+.sk-logo{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;margin:0 auto 8px;}
+.sk-ad{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:6px;}
+.modal-bg{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(7,5,14,.88);z-index:500;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 15px;}
+.modal-kart{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:22px;width:100%;max-width:680px;margin:auto;}
+.met-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0;}
+.met{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:10px;text-align:center;}
+.met-l{font-size:10px;color:var(--mu);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
+.met-v{font-size:13px;font-weight:700;color:var(--tx);}
 @media(max-width:1100px){.sb{width:195px;min-width:195px;}}
 @media(max-width:880px){.sb{display:none;}.sg,.trg{grid-template-columns:repeat(2,1fr);}.ekgd{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}}
+@media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}.met-grid{grid-template-columns:repeat(2,1fr);}}
 </style>
 </head>
 <body>
@@ -203,6 +213,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="card">
     <div class="ctit">Hisse Sinyalleri</div>
     <div id="sinyal-tablo-alani"><div class="es">Modeller eğitiliyor...</div></div>
+  </div>
+  <div class="card">
+    <div class="ctit">Sirket Profilleri</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="sirket-kartlar"><div class="es">Sinyaller yukleniyor...</div></div>
   </div>
 </div>
 </div>
@@ -298,6 +312,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 </div><!-- /lay -->
 
+<div id="sirket-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)sirketKapat()">
+  <div class="modal-kart" id="modal-icerik"><div class="es">Yukleniyor...</div></div>
+</div>
+
 <script>
 const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={};
@@ -363,6 +381,7 @@ function sayfaGun(data){
   sektorGun(sn);
   tabloGun(sn);
   trTabGun(tr);
+  sirketKartlariGun(sn);
 }
 
 const SMAP={AKBNK:'Bankacilik',GARAN:'Bankacilik',YKBNK:'Bankacilik',EKGYO:'Gayrimenkul',PGSUS:'Havacilik',THYAO:'Havacilik',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Celik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
@@ -626,6 +645,72 @@ function alarmGun(){
   if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();
 }
 
+function sirketKartlariGun(sn){
+  const el=document.getElementById('sirket-kartlar');
+  if(!el||!sn||!sn.length) return;
+  const rnk=['#a78bfa','#22c55e','#f59e0b','#6366f1','#ef4444','#06b6d4','#ec4899','#84cc16'];
+  let h='';
+  sn.forEach((s,i)=>{
+    const k=s.sembol.replace('.IS','');
+    const r=rnk[i%rnk.length];
+    const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
+    h+='<div class="sirket-kart" data-sembol="'+k+'" onclick="sirketAc(this.dataset.sembol)">'+
+      '<div class="sk-logo" style="background:'+r+'22;border:1px solid '+r+'44;color:'+r+'">'+k.substring(0,2)+'</div>'+
+      '<div class="sk-ad">'+k+'</div>'+
+      '<span class="pill '+kc+'">'+s.karar+'</span></div>';
+  });
+  el.innerHTML=h;
+}
+
+function sirketAc(sembol){
+  const modal=document.getElementById('sirket-modal');
+  modal.style.display='flex';
+  document.getElementById('modal-icerik').innerHTML='<div class="es">Yukleniyor...</div>';
+  fetch('/api/hisse/'+sembol).then(r=>r.json()).then(d=>{
+    const s=d.sinyal,f=d.finans||{};
+    const kc=s?(s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle'):'bekle';
+    const fmt=(v,dec,suf)=>v==null?'-':(Number(v).toLocaleString('tr-TR',{maximumFractionDigits:dec||0}))+(suf||'');
+    const fmtP=v=>v==null?'-':v>=1e12?(v/1e12).toFixed(1)+' T TL':v>=1e9?(v/1e9).toFixed(1)+' Mr TL':v>=1e6?(v/1e6).toFixed(0)+' Mn TL':fmt(v,0,' TL');
+    const metriks=[
+      ['Piyasa Degeri',fmtP(f.piyasaDegeri)],
+      ['F/K Orani',fmt(f.fk,1)],
+      ['PD/DD',fmt(f.pd_dd,2)],
+      ['52H Yuksek',fmt(f.yuksek52,2,' TL')],
+      ['52H Dusuk',fmt(f.dusuk52,2,' TL')],
+      ['Temettu',f.temettu!=null?'%'+Number(f.temettu*100).toFixed(1):'-'],
+      ['Beta',fmt(f.beta,2)],
+      ['Calisan',f.calisanSayisi?Number(f.calisanSayisi).toLocaleString('tr-TR'):'-'],
+    ];
+    let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">'+
+      '<div style="display:flex;gap:12px;align-items:center">'+
+      '<div style="width:50px;height:50px;border-radius:12px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--ac)">'+sembol.substring(0,2)+'</div>'+
+      '<div><div style="font-size:17px;font-weight:700;color:var(--tx)">'+d.ad+'</div>'+
+      '<div style="font-size:11px;color:var(--mu);margin-top:2px">'+sembol+' - '+d.sektor+'</div></div></div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+      (s?'<span class="pill '+kc+'">'+s.karar+'</span>':'')+
+      '<button onclick="sirketKapat()" style="background:var(--sf);border:1px solid var(--bd);color:var(--mu);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1">x</button>'+
+      '</div></div>';
+    if(d.aciklama) h+='<div style="font-size:12px;color:var(--mu);line-height:1.65;padding:12px;background:var(--sf);border-radius:8px;margin-bottom:2px">'+d.aciklama+'</div>';
+    h+='<div class="met-grid">';
+    metriks.forEach(function(m){h+='<div class="met"><div class="met-l">'+m[0]+'</div><div class="met-v">'+m[1]+'</div></div>';});
+    h+='</div>';
+    if(s){
+      const dr=s.degisim>=0?'gr':'re';
+      h+='<div style="background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:11px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">'+
+        '<span>Fiyat: <strong>'+Number(s.fiyat).toFixed(2)+' TL</strong></span>'+
+        '<span class="'+dr+'">Degisim: '+(s.degisim>=0?'+':'')+Number(s.degisim).toFixed(2)+'%</span>'+
+        '<span>RSI: <strong>'+Number(s.rsi).toFixed(1)+'</strong></span>'+
+        '<span class="gr">Hedef: <strong>'+Number(s.hedef).toFixed(2)+' TL</strong></span>'+
+        '<span class="re">Stop: <strong>'+Number(s.stop).toFixed(2)+' TL</strong></span>'+
+        '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span></div>';
+    }
+    document.getElementById('modal-icerik').innerHTML=h;
+  }).catch(function(){document.getElementById('modal-icerik').innerHTML='<div class="es">Veri alinamadi.</div>';});
+}
+
+function sirketKapat(){document.getElementById('sirket-modal').style.display='none';}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')sirketKapat();});
+
 alarmGun(); portfoyGun(); veriCek(); setInterval(veriCek,10000);
 </script>
 </body>
@@ -635,7 +720,10 @@ alarmGun(); portfoyGun(); veriCek(); setInterval(veriCek,10000);
 
 def borsa_acik_mi():
     from datetime import time as dtime
-    return dtime(10, 0) <= datetime.now().time() <= dtime(18, 10)
+    now = datetime.now()
+    if now.weekday() >= 5:   # Cumartesi=5, Pazar=6
+        return False
+    return dtime(10, 0) <= now.time() <= dtime(18, 10)
 
 def piyasa_bilgisi_cek():
     try:
@@ -800,6 +888,49 @@ OZELLIKLER = [
     'Hacim_Oran','ATR','Volatilite','Kanat','Govde','Yon',
     '52H_Yuzde','RSI_Trend','Hacim_Fiyat'
 ]
+
+SIRKET_BILGI = {
+    'AKBNK': {
+        'ad': 'Akbank T.A.S.',
+        'sektor': 'Bankacilik',
+        'aciklama': "Akbank, 1948 yilinda kurulan Turkiye'nin en buyuk ozel bankalarindan biridir. Bireysel, kurumsal ve ticari bankacilik, kredi kartlari, yatirim bankaciligi ve sigortacilik alanlarinda hizmet vermektedir. 2024 sonu itibarita 17 milyondan fazla musteriye ulasmakatdir.",
+    },
+    'GARAN': {
+        'ad': 'Garanti BBVA',
+        'sektor': 'Bankacilik',
+        'aciklama': "Garanti BBVA, 1946 yilinda kurulan ve Ispanyol BBVA'nin istiraki olan Turkiye'nin onde gelen ozel bankalarindan biridir. Bireysel ve kurumsal bankacilik ile dijital hizmetler alaninda faaliyet gostermektedir.",
+    },
+    'YKBNK': {
+        'ad': 'Yapi ve Kredi Bankasi A.S.',
+        'sektor': 'Bankacilik',
+        'aciklama': "Yapi Kredi, 1944 yilinda kurulan Turkiye'nin ilk ozel bankalarindan biridir. Koc Holding ve UniCredit ortakligiyla faaliyet gosteren banka, bireysel, ticari ve kurumsal bankacilik hizmetleri sunmaktadir.",
+    },
+    'EKGYO': {
+        'ad': 'Emlak Konut GYO A.S.',
+        'sektor': 'Gayrimenkul',
+        'aciklama': "Emlak Konut GYO, Turkiye'nin en buyuk gayrimenkul yatirim ortakligidir. TOKI istirakidir; konut projeleri gelistirme ve arsa satisi alanlarinda faaliyet gostermekte olup yuzlerce teslim edilmis projesi bulunmaktadir.",
+    },
+    'PGSUS': {
+        'ad': 'Pegasus Hava Tasimaciligi A.S.',
+        'sektor': 'Havacilik',
+        'aciklama': "Pegasus Airlines, 1990 yilinda kurulan Turkiye merkezli dusuk maliyetli havayolu sirketidir. Ic hat ve uluslararasi hatlar dahil 100'den fazla destinasyona ucus gerceklestirmektedir.",
+    },
+    'TCELL': {
+        'ad': 'Turkcell Iletisim Hizmetleri A.S.',
+        'sektor': 'Telekomunikasyon',
+        'aciklama': "Turkcell, Turkiye'nin lider mobil iletisim sirketidir. 1994 yilinda kurulan sirket, mobil, fiber internet, dijital servisler ve teknoloji cozumleri alanlarinda faaliyet gostermektedir.",
+    },
+    'SISE': {
+        'ad': 'Turkiye Sise ve Cam Fabrikalari A.S.',
+        'sektor': 'Cam & Kimya',
+        'aciklama': "Sisecam, 1935 yilinda kurulan dunya genelinde faaliyet gosteren cam ureticisidir. Duzcam, ambalaj cami, cam ev esyasi ve kimyasallar alanlarinda Turkiye'nin en buyuk sanayi kuruluslarindan biridir.",
+    },
+    'FROTO': {
+        'ad': 'Ford Otomotiv Sanayi A.S.',
+        'sektor': 'Otomotiv',
+        'aciklama': "Ford Otosan, Ford Motor Company ile Koc Holding'in ortakligiyla 1959 yilinda kurulan Turkiye'nin onde gelen otomotiv ureticisidir. Ticari arac, binek arac ve elektrikli arac uretimi gerceklestirmektedir.",
+    },
+}
 
 def model_egit(sembol):
     df = yf.Ticker(sembol).history(period="5y", interval="1d")
@@ -1033,6 +1164,36 @@ def api_veri():
         'haberler'      : SISTEM_VERISI['haberler'],
     }
     return jsonify(json_temizle(data))
+
+@app.route('/api/hisse/<sembol>')
+def api_hisse(sembol):
+    sembol_is = sembol + '.IS' if not sembol.endswith('.IS') else sembol
+    bilgi = SIRKET_BILGI.get(sembol, {'ad': sembol, 'sektor': '-', 'aciklama': ''})
+    fin = {}
+    try:
+        info = yf.Ticker(sembol_is).info or {}
+        fin = {
+            'piyasaDegeri' : info.get('marketCap'),
+            'fk'           : info.get('trailingPE'),
+            'pd_dd'        : info.get('priceToBook'),
+            'yuksek52'     : info.get('fiftyTwoWeekHigh'),
+            'dusuk52'      : info.get('fiftyTwoWeekLow'),
+            'temettu'      : info.get('dividendYield'),
+            'calisanSayisi': info.get('fullTimeEmployees'),
+            'beta'         : info.get('beta'),
+        }
+    except:
+        pass
+    sinyal = next((s for s in SISTEM_VERISI['sinyaller']
+                   if s['sembol'].replace('.IS', '') == sembol), None)
+    return jsonify(json_temizle({
+        'sembol'  : sembol,
+        'ad'      : bilgi['ad'],
+        'sektor'  : bilgi['sektor'],
+        'aciklama': bilgi['aciklama'],
+        'finans'  : fin,
+        'sinyal'  : sinyal,
+    }))
 
 if __name__ == '__main__':
     print("\n" + "="*55)
