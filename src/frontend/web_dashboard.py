@@ -55,8 +55,8 @@ HTML = '''<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
 .hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
-.brand{font-family:'Cinzel',serif;font-size:22px;font-weight:900;letter-spacing:5px;color:var(--ac);text-transform:uppercase;text-shadow:0 0 28px rgba(167,139,250,.4);}
-.brand-sub{font-size:9px;color:var(--mu);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.brand{font-family:'Cinzel',serif;font-size:22px;font-weight:900;letter-spacing:5px;text-transform:uppercase;background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 18px rgba(167,139,250,.45));}
+.brand-sub{font-size:9px;color:var(--mu);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
 .badge{background:#22c55e14;border:1px solid #22c55e28;color:var(--gr);padding:3px 10px;border-radius:20px;font-size:11px;}
 .badge.kapali{background:#ef444414;border-color:#ef444428;color:var(--re);}
 .tnav{background:var(--sf);border-bottom:1px solid var(--bd);display:flex;padding:0 20px;overflow-x:auto;position:sticky;top:52px;z-index:100;}
@@ -153,9 +153,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <body>
 
 <div class="hdr">
-  <div>
-    <div class="brand">LIDYA</div>
-    <div class="brand-sub">Borsa Analiz Platformu</div>
+  <div style="display:flex;align-items:center;gap:13px">
+    <svg width="40" height="40" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg1" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stop-color="#a78bfa"/>
+          <stop offset="100%" stop-color="#ec4899"/>
+        </linearGradient>
+      </defs>
+      <rect x="1"  y="27" width="11" height="14" rx="3" fill="url(#bg1)" opacity="0.55"/>
+      <rect x="16" y="18" width="11" height="23" rx="3" fill="url(#bg1)" opacity="0.78"/>
+      <rect x="31" y="7"  width="11" height="34" rx="3" fill="url(#bg1)"/>
+    </svg>
+    <div>
+      <div class="brand">LIDYA</div>
+      <div class="brand-sub">Borsa Analiz Platformu</div>
+    </div>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
     <span id="borsa-durum" class="badge">● YÜKLENIYOR</span>
