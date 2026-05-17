@@ -487,6 +487,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 @media(max-width:1100px){.sb{width:195px;min-width:195px;}}
 @media(max-width:880px){.sb{display:none;}.sg,.trg{grid-template-columns:repeat(2,1fr);}.ekgd{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}.met-grid{grid-template-columns:repeat(2,1fr);}}
+.mob-menu-btn{display:none;background:none;border:1px solid var(--bd);color:var(--tx);padding:5px 10px;border-radius:7px;cursor:pointer;font-size:17px;line-height:1;}
+.bnav{display:none;position:fixed;bottom:0;left:0;right:0;height:57px;background:var(--sf);border-top:1px solid var(--bd);z-index:300;align-items:stretch;}
+.bni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--mu);cursor:pointer;font-size:9px;font-weight:600;padding:5px 0;transition:color .2s;}
+.bni.active{color:var(--ac);}.bni svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.drawer-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(7,5,14,.72);z-index:400;display:none;}
+.drawer-overlay.open{display:block;}
+.drawer{position:fixed;top:0;left:-285px;width:275px;height:100%;background:var(--sf);z-index:401;transition:left .28s cubic-bezier(.4,0,.2,1);overflow-y:auto;border-right:1px solid var(--bd);}
+.drawer.open{left:0;}
+.drawer-hdr{padding:13px 14px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--sf);}
+.drawer-kapat{background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;}
+.pf-grafik-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+@media(max-width:640px){
+  .mob-menu-btn{display:flex!important;align-items:center;justify-content:center;}
+  .tnav{display:none!important;}
+  .bnav{display:flex!important;}
+  .lay{padding-bottom:60px;}
+  .pf-grafik-grid{grid-template-columns:1fr;}
+  #sirket-kartlar{grid-template-columns:repeat(2,1fr)!important;}
+  .sg{grid-template-columns:repeat(2,1fr);}
+  .trg{grid-template-columns:repeat(2,1fr);}
+}
 </style>
 </head>
 <body>
@@ -510,6 +531,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
+    <button class="mob-menu-btn" onclick="drawerAc()" title="Haberler">&#9776;</button>
     <span id="borsa-durum" class="badge">● YÜKLENIYOR</span>
     <span id="son-guncelleme" style="font-size:10px;color:var(--mu)"></span>
   </div>
@@ -630,6 +652,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="portfoy-tablo"><div class="es">Portföy boş.</div></div>
     <div id="portfoy-ozet" style="display:none;margin-top:12px;padding:12px;background:var(--sf);border-radius:8px;font-size:12px;display:flex;gap:18px;flex-wrap:wrap"></div>
   </div>
+  <div class="pf-grafik-grid" id="portfoy-grafik-satir" style="display:none">
+    <div class="card" style="margin:0">
+      <div class="ctit">Hisse Dağılımı</div>
+      <div id="portfoy-pasta" style="height:230px"></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="ctit">Kar / Zarar Durumu</div>
+      <div id="portfoy-bar" style="height:230px"></div>
+    </div>
+  </div>
   <div class="card">
     <div class="ctit">Fiyat Alarmları</div>
     <div class="pf">
@@ -674,6 +706,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 </div><!-- /lay -->
 
+<!-- Haberler Drawer (mobil) -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="drawerKapat()"></div>
+<div class="drawer" id="haberler-drawer">
+  <div class="drawer-hdr">
+    <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">Güncel Haberler</span>
+    <button class="drawer-kapat" onclick="drawerKapat()">&#xD7;</button>
+  </div>
+  <div id="haber-listesi-mob"><div class="es">Yükleniyor...</div></div>
+</div>
+
+<!-- Alt Navigasyon (mobil) -->
+<nav class="bnav" id="bnav">
+  <button class="bni" id="bni-haber" onclick="drawerAc()">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h12M4 14h10M4 18h8"/></svg>
+    Haberler
+  </button>
+  <button class="bni active" id="bni-sinyaller" onclick="tabMob('sinyaller',this)">
+    <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+    Sinyaller
+  </button>
+  <button class="bni" id="bni-grafik" onclick="tabMob('grafik',this)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+    Grafik
+  </button>
+  <button class="bni" id="bni-trackrecord" onclick="tabMob('trackrecord',this)">
+    <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    Analiz
+  </button>
+  <button class="bni" id="bni-portfoy" onclick="tabMob('portfoy',this)">
+    <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+    Portföy
+  </button>
+</nav>
+
 <div id="sirket-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)sirketKapat()">
   <div class="modal-kart" id="modal-icerik"><div class="es">Yukleniyor...</div></div>
 </div>
@@ -698,10 +764,33 @@ function tabAc(id,btn){
   document.querySelectorAll('.tp').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.tb').forEach(e=>e.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');
-  btn.classList.add('active');
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.bni[id^="bni-"]').forEach(e=>{
+    if(e.id==='bni-'+id) e.classList.add('active');
+    else if(e.id!=='bni-haber') e.classList.remove('active');
+  });
   if(id==='grafik') grafikGuncelle();
   if(id==='trackrecord') perfCiz();
   if(id==='portfoy'){portfoyGun();alarmGun();const sk=document.getElementById('sync-kod');if(sk) sk.value=SID;}
+}
+
+function tabMob(id,btn){
+  document.querySelectorAll('.bni').forEach(e=>e.classList.remove('active'));
+  btn.classList.add('active');
+  const topBtn=document.querySelector('.tb[onclick*="\''+id+'\'"]');
+  tabAc(id, topBtn||null);
+}
+
+function drawerAc(){
+  document.getElementById('haberler-drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function drawerKapat(){
+  document.getElementById('haberler-drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.body.style.overflow='';
 }
 
 function veriCek(){
@@ -919,7 +1008,40 @@ function haberGun(haberler){
       '<div class="ns">'+(x.kaynak||'')+'</div>'+
       '</a></div>';
   });
-  document.getElementById('haber-listesi').innerHTML=h||'<div class="es">Haber yok.</div>';
+  const c=h||'<div class="es">Haber yok.</div>';
+  document.getElementById('haber-listesi').innerHTML=c;
+  const mob=document.getElementById('haber-listesi-mob');
+  if(mob) mob.innerHTML=c;
+}
+
+function portfoyGrafikleriCiz(p){
+  const sat=document.getElementById('portfoy-grafik-satir');
+  if(!p||!p.length){if(sat) sat.style.display='none';return;}
+  if(sat) sat.style.display='';
+  const lbl=[],vals=[],kzArr=[],clrs=[];
+  const rnk=['#a78bfa','#22c55e','#f59e0b','#6366f1','#ef4444','#06b6d4','#ec4899','#84cc16'];
+  p.forEach((x,i)=>{
+    const g=fiyatlar[x.sembol]||x.maliyet;
+    const val=parseFloat((g*x.adet).toFixed(0));
+    const kzp=parseFloat(((g-x.maliyet)/x.maliyet*100).toFixed(2));
+    lbl.push(x.sembol); vals.push(val); kzArr.push(kzp); clrs.push(rnk[i%rnk.length]);
+  });
+  const lay0={paper_bgcolor:CBG,plot_bgcolor:CBG,font:{color:'#ddd6f3',size:11},margin:{t:8,b:8,l:8,r:8}};
+  const cfg={responsive:true,displayModeBar:false};
+  Plotly.newPlot('portfoy-pasta',[{
+    type:'pie',labels:lbl,values:vals,hole:0.42,
+    marker:{colors:clrs,line:{color:CBG,width:2}},
+    textinfo:'label+percent',textfont:{size:10},
+    hovertemplate:'%{label}<br>%{value:,.0f} TL<extra></extra>'
+  }],{...lay0,showlegend:false,margin:{t:8,b:8,l:8,r:8}},cfg);
+  const barClr=kzArr.map(v=>v>=0?'rgba(34,197,94,.75)':'rgba(239,68,68,.75)');
+  Plotly.newPlot('portfoy-bar',[{
+    type:'bar',x:lbl,y:kzArr,marker:{color:barClr,line:{width:0}},
+    text:kzArr.map(v=>(v>=0?'+':'')+v+'%'),textposition:'outside',
+    hovertemplate:'%{x}: %{y:.2f}%<extra></extra>'
+  }],{...lay0,margin:{t:22,b:30,l:36,r:8},
+    yaxis:{gridcolor:'rgba(46,42,72,.4)',zerolinecolor:'rgba(46,42,72,.8)',ticksuffix:'%'},
+    xaxis:{tickfont:{size:10}}},cfg);
 }
 
 function _portfoyRender(p){
@@ -943,6 +1065,7 @@ function _portfoyRender(p){
   tbl.innerHTML=h+'</tbody></table>';
   const nkz=totD-totM,nkzp=totM>0?nkz/totM*100:0,nr=nkz>=0?'gr':'re';
   if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
+  portfoyGrafikleriCiz(p);
 }
 
 function portfoyEkle(){
