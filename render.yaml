@@ -9,6 +9,8 @@ services:
     envVars:
       - key: GMAIL_SIFRE
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: PYTHONPATH
         value: .
       - key: PYTHON_VERSION

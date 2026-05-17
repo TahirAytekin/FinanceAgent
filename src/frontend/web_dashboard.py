@@ -1,15 +1,18 @@
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify, request
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import pandas_ta as ta
 import math
 import os
+import pickle
+import zlib
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 import warnings
@@ -18,6 +21,12 @@ try:
     import feedparser as _feedparser
 except ImportError:
     _feedparser = None
+try:
+    import psycopg2
+    import psycopg2.extras
+    _PSYCOPG2_OK = True
+except ImportError:
+    _PSYCOPG2_OK = False
 
 # ─── Ayarlar ───────────────────────────────────────────
 HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
@@ -26,6 +35,336 @@ HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
 GUNCELLEME = 300
 PORT       = int(os.environ.get('PORT', 5000))
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ───────────────────────────────────────────────────────
+
+# ─── Veritabani ────────────────────────────────────────
+DB_URL = os.environ.get('DATABASE_URL')
+
+def db_baglan():
+    if not DB_URL or not _PSYCOPG2_OK:
+        return None
+    try:
+        return psycopg2.connect(DB_URL, connect_timeout=5)
+    except Exception as e:
+        print(f"[DB] Baglanti hatasi: {e}")
+        return None
+
+def db_tablolari_olustur():
+    conn = db_baglan()
+    if conn is None:
+        print("[DB] Veritabani yok - bellek modu aktif.")
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS lidya_modeller (
+                sembol VARCHAR(20) PRIMARY KEY,
+                model_data BYTEA NOT NULL,
+                scaler_data BYTEA NOT NULL,
+                ozellik_sayisi INTEGER,
+                egitim_tarihi TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS lidya_sinyaller (
+                id BIGSERIAL PRIMARY KEY,
+                sembol VARCHAR(20), fiyat FLOAT, degisim FLOAT,
+                rsi FLOAT, karar VARCHAR(10), guven FLOAT,
+                hedef FLOAT, stop FLOAT,
+                zaman TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS lidya_track_record (
+                id BIGSERIAL PRIMARY KEY,
+                sembol VARCHAR(20), karar VARCHAR(10),
+                fiyat_giris FLOAT, fiyat_cikis FLOAT,
+                hedef FLOAT, stop FLOAT, kar_zarar FLOAT,
+                sonuc VARCHAR(20) DEFAULT 'Bekliyor',
+                zaman TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS lidya_portfoy (
+                id BIGSERIAL PRIMARY KEY,
+                session_id VARCHAR(64), sembol VARCHAR(20),
+                adet FLOAT, maliyet FLOAT,
+                guncelleme TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(session_id, sembol)
+            );
+            CREATE TABLE IF NOT EXISTS lidya_alarmlar (
+                id BIGSERIAL PRIMARY KEY,
+                session_id VARCHAR(64), sembol VARCHAR(20),
+                yon VARCHAR(10), fiyat FLOAT,
+                tetiklendi BOOLEAN DEFAULT FALSE,
+                olusturma TIMESTAMPTZ DEFAULT NOW()
+            );
+            """)
+        conn.commit()
+        print("[DB] Tablolar hazir.")
+    except Exception as e:
+        print(f"[DB] Tablo olusturma hatasi: {e}")
+    finally:
+        conn.close()
+
+def model_db_kaydet(sembol, model, scaler):
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        mb = zlib.compress(pickle.dumps(model), level=6)
+        sb = zlib.compress(pickle.dumps(scaler), level=6)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO lidya_modeller
+                    (sembol, model_data, scaler_data, ozellik_sayisi, egitim_tarihi)
+                VALUES (%s,%s,%s,%s,NOW())
+                ON CONFLICT (sembol) DO UPDATE SET
+                    model_data=EXCLUDED.model_data,
+                    scaler_data=EXCLUDED.scaler_data,
+                    ozellik_sayisi=EXCLUDED.ozellik_sayisi,
+                    egitim_tarihi=NOW()
+            """, (sembol, psycopg2.Binary(mb), psycopg2.Binary(sb), len(OZELLIKLER)))
+        conn.commit()
+        print(f"[DB] {sembol} modeli kaydedildi.")
+    except Exception as e:
+        print(f"[DB] Model kayit hatasi {sembol}: {e}")
+    finally:
+        conn.close()
+
+def model_db_yukle(sembol, max_gun=7):
+    conn = db_baglan()
+    if conn is None:
+        return None, None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT model_data, scaler_data, ozellik_sayisi, egitim_tarihi
+                FROM lidya_modeller WHERE sembol=%s
+            """, (sembol,))
+            row = cur.fetchone()
+        if row is None:
+            return None, None
+        model_data, scaler_data, ozellik_sayisi, egitim_tarihi = row
+        yas = (datetime.now(timezone.utc) - egitim_tarihi.replace(tzinfo=timezone.utc)
+               if egitim_tarihi.tzinfo is None
+               else datetime.now(timezone.utc) - egitim_tarihi).days
+        if yas > max_gun:
+            print(f"[DB] {sembol} modeli eski ({yas} gun), yeniden egitilecek.")
+            return None, None
+        if ozellik_sayisi != len(OZELLIKLER):
+            print(f"[DB] {sembol} ozellik sayisi uyusmuyor ({ozellik_sayisi} vs {len(OZELLIKLER)}), yeniden egitilecek.")
+            return None, None
+        model  = pickle.loads(zlib.decompress(bytes(model_data)))
+        scaler = pickle.loads(zlib.decompress(bytes(scaler_data)))
+        print(f"[DB] {sembol} modeli yuklendi ({yas} gun onceki egitim) ✅")
+        return model, scaler
+    except Exception as e:
+        print(f"[DB] Model yukleme hatasi {sembol}: {e}")
+        return None, None
+    finally:
+        conn.close()
+
+def sinyalleri_db_kaydet(sinyaller):
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        with conn.cursor() as cur:
+            for s in sinyaller:
+                cur.execute("""
+                    INSERT INTO lidya_sinyaller
+                        (sembol,fiyat,degisim,rsi,karar,guven,hedef,stop)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (s['sembol'],s.get('fiyat'),s.get('degisim'),s.get('rsi'),
+                      s.get('karar'),s.get('guven'),s.get('hedef'),s.get('stop')))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Sinyal kayit hatasi: {e}")
+    finally:
+        conn.close()
+
+def track_record_db_oku():
+    conn = db_baglan()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT sembol, karar, fiyat_giris, fiyat_cikis,
+                       hedef, stop, kar_zarar, sonuc,
+                       TO_CHAR(zaman,'DD.MM.YYYY HH24:MI') as zaman
+                FROM lidya_track_record ORDER BY zaman DESC
+            """)
+            rows = [dict(r) for r in cur.fetchall()]
+        if not rows:
+            return None
+        tamamlanan = [r for r in rows if r['sonuc'] in ('KAZANDI','KAYBETTI')]
+        kazanan = sum(1 for r in tamamlanan if r['sonuc']=='KAZANDI')
+        basari  = kazanan/len(tamamlanan)*100 if tamamlanan else 0
+        ort_kar = (sum(float(r['kar_zarar'] or 0) for r in tamamlanan)/len(tamamlanan)
+                   if tamamlanan else 0)
+        return {
+            'toplam':len(rows),'tamamlanan':len(tamamlanan),'kazanan':kazanan,
+            'basari':round(basari,1),'ort_kar':round(ort_kar,2),
+            'son_sinyaller':rows[:20],
+            'tamamlanan_liste':[{'sembol':r['sembol'],'kar_zarar':r['kar_zarar'],
+                                  'sonuc':r['sonuc']} for r in tamamlanan],
+        }
+    except Exception as e:
+        print(f"[DB] Track record okuma hatasi: {e}")
+        return None
+    finally:
+        conn.close()
+
+def sinyallerden_track_record_guncelle():
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, sembol, karar, fiyat_giris
+                FROM lidya_track_record
+                WHERE sonuc='Bekliyor' AND zaman < NOW() - INTERVAL '3 days'
+            """)
+            bekleyenler = cur.fetchall()
+            for b in bekleyenler:
+                cur.execute("""
+                    SELECT fiyat FROM lidya_sinyaller
+                    WHERE sembol=%s ORDER BY zaman DESC LIMIT 1
+                """, (b['sembol'],))
+                son = cur.fetchone()
+                if not son or not b['fiyat_giris']:
+                    continue
+                cikis = float(son['fiyat'])
+                giris = float(b['fiyat_giris'])
+                if giris == 0:
+                    continue
+                kz = (cikis - giris) / giris * 100
+                if b['karar'] == 'SAT':
+                    kz = -kz
+                sonuc = 'KAZANDI' if kz > 0 else 'KAYBETTI'
+                cur.execute("""
+                    UPDATE lidya_track_record
+                    SET fiyat_cikis=%s, kar_zarar=%s, sonuc=%s WHERE id=%s
+                """, (cikis, round(kz,2), sonuc, b['id']))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Track record guncelleme hatasi: {e}")
+    finally:
+        conn.close()
+
+def portfoy_db_oku(session_id):
+    conn = db_baglan()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT sembol,adet,maliyet FROM lidya_portfoy WHERE session_id=%s",
+                        (session_id,))
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        return None
+    finally:
+        conn.close()
+
+def portfoy_db_kaydet(session_id, sembol, adet, maliyet):
+    conn = db_baglan()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO lidya_portfoy (session_id,sembol,adet,maliyet,guncelleme)
+                VALUES (%s,%s,%s,%s,NOW())
+                ON CONFLICT (session_id,sembol) DO UPDATE SET
+                    adet=EXCLUDED.adet, maliyet=EXCLUDED.maliyet, guncelleme=NOW()
+            """, (session_id, sembol, adet, maliyet))
+        conn.commit()
+        return True
+    except Exception as e:
+        return False
+    finally:
+        conn.close()
+
+def portfoy_db_sil(session_id, sembol):
+    conn = db_baglan()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM lidya_portfoy WHERE session_id=%s AND sembol=%s",
+                        (session_id, sembol))
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+def alarmlar_db_oku(session_id):
+    conn = db_baglan()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""SELECT id,sembol,yon,fiyat,tetiklendi FROM lidya_alarmlar
+                           WHERE session_id=%s ORDER BY olusturma DESC""", (session_id,))
+            return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+def alarm_db_ekle(session_id, sembol, yon, fiyat):
+    conn = db_baglan()
+    if conn is None:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO lidya_alarmlar (session_id,sembol,yon,fiyat)
+                           VALUES (%s,%s,%s,%s) RETURNING id""",
+                        (session_id, sembol, yon, fiyat))
+            new_id = cur.fetchone()[0]
+        conn.commit()
+        return new_id
+    except Exception:
+        return None
+    finally:
+        conn.close()
+
+def alarm_db_sil(session_id, alarm_id):
+    conn = db_baglan()
+    if conn is None:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM lidya_alarmlar WHERE id=%s AND session_id=%s",
+                        (alarm_id, session_id))
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+def alarmlar_db_kontrol(sinyaller):
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        fm = {s['sembol'].replace('.IS',''): s['fiyat'] for s in sinyaller}
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id,sembol,yon,fiyat FROM lidya_alarmlar WHERE tetiklendi=FALSE")
+            for alarm in cur.fetchall():
+                g = fm.get(alarm['sembol'])
+                if g is None:
+                    continue
+                hit = ((alarm['yon']=='above' and g>=alarm['fiyat']) or
+                       (alarm['yon']=='below' and g<=alarm['fiyat']))
+                if hit:
+                    cur.execute("UPDATE lidya_alarmlar SET tetiklendi=TRUE WHERE id=%s",
+                                (alarm['id'],))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Alarm kontrol hatasi: {e}")
+    finally:
+        conn.close()
 # ───────────────────────────────────────────────────────
 
 app = Flask(__name__)
@@ -305,6 +644,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div id="alarm-listesi"><div class="es">Henüz alarm yok.</div></div>
   </div>
+  <div class="card">
+    <div class="ctit">Cihazlar Arasi Sync</div>
+    <p style="font-size:12px;color:var(--mu);margin-bottom:10px">Asagidaki kodu baska cihaza yapistir, portfoy ve alarmlar oraya tasinir.</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input class="pi" id="sync-kod" readonly style="flex:1;min-width:200px;font-size:11px;font-family:monospace">
+      <button class="ba" onclick="syncKopyala()">Kopyala</button>
+      <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="syncUygula()">Uygula</button>
+    </div>
+    <input class="pi" id="sync-giris" placeholder="Baska cihazin kodunu buraya yapistir..." style="width:100%;margin-top:8px;font-size:11px;font-family:monospace">
+  </div>
 </div>
 </div>
 
@@ -333,6 +682,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={};
 
+function getSid(){
+  let sid=localStorage.getItem('lidya_sid');
+  if(!sid){
+    const a=new Uint8Array(16);
+    crypto.getRandomValues(a);
+    sid=[...a].map((b,i)=>(i===4||i===6||i===8||i===10?'-':'')+b.toString(16).padStart(2,'0')).join('');
+    localStorage.setItem('lidya_sid',sid);
+  }
+  return sid;
+}
+const SID=getSid();
+
 function tabAc(id,btn){
   document.querySelectorAll('.tp').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.tb').forEach(e=>e.classList.remove('active'));
@@ -340,7 +701,7 @@ function tabAc(id,btn){
   btn.classList.add('active');
   if(id==='grafik') grafikGuncelle();
   if(id==='trackrecord') perfCiz();
-  if(id==='portfoy'){portfoyGun();alarmGun();}
+  if(id==='portfoy'){portfoyGun();alarmGun();const sk=document.getElementById('sync-kod');if(sk) sk.value=SID;}
 }
 
 function veriCek(){
@@ -561,28 +922,7 @@ function haberGun(haberler){
   document.getElementById('haber-listesi').innerHTML=h||'<div class="es">Haber yok.</div>';
 }
 
-function portfoyEkle(){
-  const s=(document.getElementById('p-sembol').value||'').toUpperCase().trim();
-  const a=parseFloat(document.getElementById('p-adet').value);
-  const m=parseFloat(document.getElementById('p-maliyet').value);
-  if(!s||!a||!m){alert('Tum alanlari doldurun.');return;}
-  const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
-  const i=p.findIndex(x=>x.sembol===s);
-  if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
-  localStorage.setItem('portfoy',JSON.stringify(p));
-  document.getElementById('p-sembol').value='';
-  document.getElementById('p-adet').value='';
-  document.getElementById('p-maliyet').value='';
-  portfoyGun();
-}
-
-function portfoySil(s){
-  localStorage.setItem('portfoy',JSON.stringify(JSON.parse(localStorage.getItem('portfoy')||'[]').filter(x=>x.sembol!==s)));
-  portfoyGun();
-}
-
-function portfoyGun(){
-  const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
+function _portfoyRender(p){
   const tbl=document.getElementById('portfoy-tablo'), oz=document.getElementById('portfoy-ozet');
   if(!p.length){tbl.innerHTML='<div class="es">Portfoy bos.</div>';if(oz) oz.style.display='none';return;}
   let h='<table class="t"><thead><tr><th>Hisse</th><th>Adet</th><th>Maliyet</th><th>Guncel</th><th>Piyasa D.</th><th>K/Z</th><th>K/Z %</th><th></th></tr></thead><tbody>';
@@ -595,9 +935,9 @@ function portfoyGun(){
     h+='<tr><td style="font-weight:700">'+x.sembol+'</td><td>'+x.adet+'</td>'+
       '<td>'+x.maliyet.toFixed(2)+' TL</td>'+
       '<td>'+(g!==null?g.toFixed(2)+' TL':'<span style="color:var(--mu)">-</span>')+'</td>'+
-      '<td>'+(pd!==null?pd.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
-      '<td class="'+r+'">'+(kz!==null?(kz>=0?'+':'')+kz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL':'-')+'</td>'+
-      '<td class="'+r+'">'+(kzp!==null?(kzp>=0?'+':'')+kzp.toFixed(1)+'%':'-')+'</td>'+
+      '<td>'+(pd!==null?pd.toLocaleString(\'tr-TR\',{maximumFractionDigits:0})+\' TL\':\'-\')+'</td>'+
+      '<td class="'+r+'">'+(kz!==null?(kz>=0?\'+\':\'\')+kz.toLocaleString(\'tr-TR\',{maximumFractionDigits:0})+\' TL\':\'-\')+'</td>'+
+      '<td class="'+r+'">'+(kzp!==null?(kzp>=0?\'+\':\'\')+kzp.toFixed(1)+\'%\':\'-\')+'</td>'+
       '<td><button class="bd2" onclick="portfoySil(\\\''+x.sembol+'\\\')">Sil</button></td></tr>';
   });
   tbl.innerHTML=h+'</tbody></table>';
@@ -605,57 +945,146 @@ function portfoyGun(){
   if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
 }
 
+function portfoyEkle(){
+  const s=(document.getElementById('p-sembol').value||'').toUpperCase().trim();
+  const a=parseFloat(document.getElementById('p-adet').value);
+  const m=parseFloat(document.getElementById('p-maliyet').value);
+  if(!s||!a||!m){alert('Tum alanlari doldurun.');return;}
+  document.getElementById('p-sembol').value='';
+  document.getElementById('p-adet').value='';
+  document.getElementById('p-maliyet').value='';
+  fetch('/api/portfoy/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sembol:s,adet:a,maliyet:m})})
+    .then(()=>portfoyGun())
+    .catch(()=>{
+      const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
+      const i=p.findIndex(x=>x.sembol===s);
+      if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
+      localStorage.setItem('portfoy',JSON.stringify(p));
+      portfoyGun();
+    });
+}
+
+function portfoySil(s){
+  fetch('/api/portfoy/'+SID+'/'+s,{method:'DELETE'})
+    .then(()=>portfoyGun())
+    .catch(()=>{
+      localStorage.setItem('portfoy',JSON.stringify(JSON.parse(localStorage.getItem('portfoy')||'[]').filter(x=>x.sembol!==s)));
+      portfoyGun();
+    });
+}
+
+function portfoyGun(){
+  fetch('/api/portfoy/'+SID)
+    .then(r=>r.json())
+    .then(p=>_portfoyRender(p))
+    .catch(()=>{
+      const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
+      _portfoyRender(p);
+    });
+}
+
+function _alarmRender(a){
+  const el=document.getElementById('alarm-listesi');
+  if(!el) return;
+  if(!a.length){el.innerHTML='<div class="es">Henuz alarm yok.</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Kosul</th><th>Hedef</th><th>Guncel</th><th>Durum</th><th></th></tr></thead><tbody>';
+  a.forEach((x)=>{
+    const g=fiyatlar[x.sembol];
+    const du=x.tetiklendi?'<span class="alb alh">Tetiklendi</span>':'<span class="alb">Bekliyor</span>';
+    const delKey=x.id!==undefined?x.id:JSON.stringify(x);
+    h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
+      '<td>'+(x.yon==='above'?'Yukari':'Asagi')+'</td>'+
+      '<td>'+parseFloat(x.fiyat).toFixed(2)+' TL</td>'+
+      '<td>'+(g!==undefined?g.toFixed(2)+' TL':'-')+'</td>'+
+      '<td>'+du+'</td>'+
+      '<td><button class="bd2" onclick="alarmSil('+JSON.stringify(delKey)+')">Sil</button></td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table>';
+  if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();
+}
+
 function alarmEkle(){
   const s=(document.getElementById('a-sembol').value||'').toUpperCase().trim();
   const y=document.getElementById('a-yon').value;
   const f=parseFloat(document.getElementById('a-fiyat').value);
   if(!s||!f){alert('Sembol ve fiyat zorunlu.');return;}
-  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
-  localStorage.setItem('alarmlar',JSON.stringify(a));
   document.getElementById('a-sembol').value='';
   document.getElementById('a-fiyat').value='';
-  alarmGun();
+  fetch('/api/alarmlar/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sembol:s,yon:y,fiyat:f})})
+    .then(()=>alarmGun())
+    .catch(()=>{
+      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+      a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
+      localStorage.setItem('alarmlar',JSON.stringify(a));
+      alarmGun();
+    });
 }
 
-function alarmSil(i){
-  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  a.splice(i,1);localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();
+function alarmSil(key){
+  if(typeof key==='number'){
+    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'})
+      .then(()=>alarmGun())
+      .catch(()=>alarmGun());
+  } else {
+    const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+    const idx=a.findIndex(x=>JSON.stringify(x)===key);
+    if(idx>=0) a.splice(idx,1);
+    localStorage.setItem('alarmlar',JSON.stringify(a));
+    alarmGun();
+  }
 }
 
 function alarmKontrol(){
-  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  let ch=false;
-  a.forEach((alarm,i)=>{
-    if(alarm.tetiklendi) return;
-    const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
-    const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
-    if(hit){a[i].tetiklendi=true;ch=true;
-      if('Notification' in window&&Notification.permission==='granted')
-        new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
-    }
-  });
-  if(ch){localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();}
+  fetch('/api/alarmlar/'+SID)
+    .then(r=>r.json())
+    .then(a=>{
+      a.forEach(alarm=>{
+        if(alarm.tetiklendi){
+          const g=fiyatlar[alarm.sembol];
+          if(g!==undefined && 'Notification' in window && Notification.permission==='granted')
+            new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
+        }
+      });
+    })
+    .catch(()=>{
+      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+      let ch=false;
+      a.forEach((alarm,i)=>{
+        if(alarm.tetiklendi) return;
+        const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
+        const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
+        if(hit){a[i].tetiklendi=true;ch=true;
+          if('Notification' in window&&Notification.permission==='granted')
+            new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
+        }
+      });
+      if(ch){localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();}
+    });
 }
 
 function alarmGun(){
-  const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-  const el=document.getElementById('alarm-listesi');
-  if(!el) return;
-  if(!a.length){el.innerHTML='<div class="es">Henuz alarm yok.</div>';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Kosul</th><th>Hedef</th><th>Guncel</th><th>Durum</th><th></th></tr></thead><tbody>';
-  a.forEach((x,i)=>{
-    const g=fiyatlar[x.sembol];
-    const du=x.tetiklendi?'<span class="alb alh">Tetiklendi</span>':'<span class="alb">Bekliyor</span>';
-    h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
-      '<td>'+(x.yon==='above'?'Yukari':'Asagi')+'</td>'+
-      '<td>'+x.fiyat.toFixed(2)+' TL</td>'+
-      '<td>'+(g!==undefined?g.toFixed(2)+' TL':'-')+'</td>'+
-      '<td>'+du+'</td>'+
-      '<td><button class="bd2" onclick="alarmSil('+i+')">Sil</button></td></tr>';
-  });
-  el.innerHTML=h+'</tbody></table>';
-  if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();
+  fetch('/api/alarmlar/'+SID)
+    .then(r=>r.json())
+    .then(a=>_alarmRender(a))
+    .catch(()=>{
+      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+      _alarmRender(a);
+    });
+}
+
+function syncKopyala(){
+  const el=document.getElementById('sync-kod');
+  if(el){navigator.clipboard.writeText(el.value).then(()=>alert('Sync kodu kopyalandi!'));}
+}
+
+function syncUygula(){
+  const giris=(document.getElementById('sync-giris').value||'').trim();
+  if(!giris){alert('Lutfen bir sync kodu girin.');return;}
+  localStorage.setItem('lidya_sid',giris);
+  alert('Sync kodu uygulandı! Sayfa yenileniyor...');
+  location.reload();
 }
 
 function sirketKartlariGun(sn){
@@ -891,6 +1320,35 @@ def ozellikler_ekle(df):
     df['52H_Yuzde']  = df['Close'] / df['Close'].rolling(252).max()
     df['RSI_Trend']  = df['RSI'] - df['RSI'].shift(5)
     df['Hacim_Fiyat']= df['Getiri_1g'] * df['Hacim_Oran']
+    try:
+        stoch = ta.stoch(df['High'], df['Low'], df['Close'])
+        df['Stoch_K'] = stoch.iloc[:, 0] / 100
+        df['Stoch_D'] = stoch.iloc[:, 1] / 100
+    except Exception:
+        df['Stoch_K'] = 0.5; df['Stoch_D'] = 0.5
+    try:
+        df['CCI'] = ta.cci(df['High'], df['Low'], df['Close'], length=20) / 200
+    except Exception:
+        df['CCI'] = 0.0
+    try:
+        df['Williams_R'] = ta.willr(df['High'], df['Low'], df['Close'], length=14) / 100
+    except Exception:
+        df['Williams_R'] = -0.5
+    try:
+        adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=14)
+        df['ADX'] = adx_df.iloc[:, 0] / 100
+    except Exception:
+        df['ADX'] = 0.25
+    try:
+        obv = ta.obv(df['Close'], df['Volume'])
+        df['OBV_Oran'] = obv.pct_change(5).fillna(0)
+    except Exception:
+        df['OBV_Oran'] = 0.0
+    try:
+        df['Getiri_30g'] = df['Close'].pct_change(30)
+        df['Getiri_60g'] = df['Close'].pct_change(60)
+    except Exception:
+        df['Getiri_30g'] = 0.0; df['Getiri_60g'] = 0.0
     return df.dropna()
 
 OZELLIKLER = [
@@ -899,7 +1357,9 @@ OZELLIKLER = [
     'MA50_Fark','MA200_Fark','Trend_Guc',
     'Getiri_1g','Getiri_3g','Getiri_5g','Getiri_10g','Getiri_20g',
     'Hacim_Oran','ATR','Volatilite','Kanat','Govde','Yon',
-    '52H_Yuzde','RSI_Trend','Hacim_Fiyat'
+    '52H_Yuzde','RSI_Trend','Hacim_Fiyat',
+    'Stoch_K','Stoch_D','CCI','Williams_R','ADX','OBV_Oran',
+    'Getiri_30g','Getiri_60g',
 ]
 
 SIRKET_BILGI = {
@@ -945,11 +1405,14 @@ SIRKET_BILGI = {
     },
 }
 
-def model_egit(sembol):
+def veri_hazirla(sembol):
     df = yf.Ticker(sembol).history(period="5y", interval="1d")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
-    df = ozellikler_ekle(df)
+    return ozellikler_ekle(df)
+
+def model_egit(sembol):
+    df = veri_hazirla(sembol)
     df['Gelecek'] = df['Close'].shift(-3) / df['Close'] - 1
     df['Hedef']   = df['Gelecek'].apply(
         lambda g: 2 if g >= 0.015 else (0 if g <= -0.015 else 1))
@@ -967,7 +1430,9 @@ def model_egit(sembol):
                  eval_metric='mlogloss', verbosity=0)),
         ('lgbm',LGBMClassifier(n_estimators=100, max_depth=5,
                  learning_rate=0.05, random_state=42,
-                 class_weight='balanced', verbose=-1))
+                 class_weight='balanced', verbose=-1)),
+        ('mlp', MLPClassifier(hidden_layer_sizes=(128, 64), max_iter=500,
+                 early_stopping=True, random_state=42)),
     ], voting='soft')
     model.fit(X_e, y[:bolme])
     return model, scaler, df
@@ -1067,25 +1532,37 @@ def track_record_oku():
                 'basari':0,'ort_kar':0,'son_sinyaller':[],'tamamlanan_liste':[]}
 
 def sistem_baslat():
-    # Kenar veriler ve haberler model eğitimini beklemeden hemen çekilir
+    db_tablolari_olustur()
+
     try:
         SISTEM_VERISI['kenar'] = kenar_verileri_cek()
-        print("Kenar veriler hazır.")
+        print("Kenar veriler hazir.")
     except Exception as e:
-        print(f"Kenar veri hatası: {e}")
+        print(f"Kenar veri hatasi: {e}")
     try:
         SISTEM_VERISI['haberler'] = haber_cek()
-        print(f"Haberler hazır: {len(SISTEM_VERISI['haberler'])} haber")
+        print(f"Haberler hazir: {len(SISTEM_VERISI['haberler'])} haber")
     except Exception as e:
-        print(f"Haber hatası: {e}")
+        print(f"Haber hatasi: {e}")
 
-    print("\nModeller eğitiliyor...")
+    print("\nModeller yukleniyor / egitiliyor...")
     for s in HISSELER:
+        model, scaler = model_db_yukle(s)
+        if model is not None:
+            try:
+                df = veri_hazirla(s)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df)
+                print(f"  {s} DB'den yuklendi ✅")
+                time.sleep(1)
+                continue
+            except Exception as e:
+                print(f"  {s} veri hazirlama hatasi: {e}")
         for deneme in range(3):
             try:
-                print(f"  {s} eğitiliyor... (deneme {deneme+1})")
+                print(f"  {s} egitiliyor... (deneme {deneme+1})")
                 model, scaler, df = model_egit(s)
                 SISTEM_VERISI['modeller'][s] = (model, scaler, df)
+                model_db_kaydet(s, model, scaler)
                 print(f"  {s} ✅")
                 break
             except Exception as e:
@@ -1094,7 +1571,7 @@ def sistem_baslat():
                     time.sleep(15)
         time.sleep(3)
 
-    print("Modeller hazır!\n")
+    print("Modeller hazir!\n")
     SISTEM_VERISI['hazir'] = True
 
     while True:
@@ -1122,19 +1599,23 @@ def sistem_baslat():
             SISTEM_VERISI['grafik_verisi']  = grafik_v
             SISTEM_VERISI['son_guncelleme'] = datetime.now().strftime("%H:%M:%S")
 
+            sinyalleri_db_kaydet(sinyaller)
+            alarmlar_db_kontrol(sinyaller)
+            sinyallerden_track_record_guncelle()
+
             try:
                 SISTEM_VERISI['kenar'] = kenar_verileri_cek()
             except Exception as e:
-                print(f"Kenar veri hatası: {e}")
+                print(f"Kenar veri hatasi: {e}")
 
             try:
                 SISTEM_VERISI['haberler'] = haber_cek()
             except Exception as e:
-                print(f"Haber hatası: {e}")
+                print(f"Haber hatasi: {e}")
 
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(sinyaller)} sinyal güncellendi.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(sinyaller)} sinyal guncellendi.")
         except Exception as e:
-            print(f"Güncelleme hatası: {e}")
+            print(f"Guncelleme hatasi: {e}")
 
         time.sleep(GUNCELLEME)
 
@@ -1164,7 +1645,7 @@ def api_veri():
         threading.Thread(target=sistem_baslat, daemon=True).start()
         print("İlk istek alındı — model eğitimi başlatıldı.")
 
-    tr_data = track_record_oku()
+    tr_data = track_record_db_oku() or track_record_oku()
     data = {
         'hazir'         : SISTEM_VERISI['hazir'],
         'sinyaller'     : SISTEM_VERISI['sinyaller'],
@@ -1207,6 +1688,40 @@ def api_hisse(sembol):
         'finans'  : fin,
         'sinyal'  : sinyal,
     }))
+
+@app.route('/api/portfoy/<sid>', methods=['GET'])
+def api_portfoy_oku(sid):
+    data = portfoy_db_oku(sid)
+    return jsonify(data if data is not None else [])
+
+@app.route('/api/portfoy/<sid>', methods=['POST'])
+def api_portfoy_kaydet(sid):
+    d = request.get_json() or {}
+    ok = portfoy_db_kaydet(sid, d.get('sembol', ''),
+                            float(d.get('adet', 0)), float(d.get('maliyet', 0)))
+    return jsonify({'ok': ok})
+
+@app.route('/api/portfoy/<sid>/<sembol>', methods=['DELETE'])
+def api_portfoy_sil(sid, sembol):
+    ok = portfoy_db_sil(sid, sembol)
+    return jsonify({'ok': ok})
+
+@app.route('/api/alarmlar/<sid>', methods=['GET'])
+def api_alarmlar_oku(sid):
+    data = alarmlar_db_oku(sid)
+    return jsonify(data if data is not None else [])
+
+@app.route('/api/alarmlar/<sid>', methods=['POST'])
+def api_alarm_ekle(sid):
+    d = request.get_json() or {}
+    new_id = alarm_db_ekle(sid, d.get('sembol', ''), d.get('yon', 'above'),
+                            float(d.get('fiyat', 0)))
+    return jsonify({'ok': new_id is not None, 'id': new_id})
+
+@app.route('/api/alarmlar/<sid>/<int:alarm_id>', methods=['DELETE'])
+def api_alarm_sil(sid, alarm_id):
+    ok = alarm_db_sil(sid, alarm_id)
+    return jsonify({'ok': ok})
 
 if __name__ == '__main__':
     print("\n" + "="*55)
