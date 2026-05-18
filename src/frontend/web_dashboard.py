@@ -806,8 +806,7 @@ function sayfaGun(data){
   const b=data.borsa_acik, d=document.getElementById('borsa-durum');
   d.textContent=b?'BORSA ACIK':'BORSA KAPALI';
   d.className='badge'+(b?'':' kapali');
-  const sg=document.getElementById('son-guncelleme');
-  if(sg) sg.textContent=data.son_guncelleme||'';
+  // saat saatGuncelle() tarafindan her saniye guncelleniyor
   if(data.kenar) kenarGun(data.kenar);
   if(data.haberler&&data.haberler.length) haberGun(data.haberler);
   if(!data.hazir) return;
@@ -1262,6 +1261,25 @@ function sirketAc(sembol){
 
 function sirketKapat(){document.getElementById('sirket-modal').style.display='none';}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')sirketKapat();});
+
+function saatGuncelle(){
+  try{
+    const tr=new Date(new Date().toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
+    const p=n=>n.toString().padStart(2,'0');
+    const saat=p(tr.getHours())+':'+p(tr.getMinutes())+':'+p(tr.getSeconds());
+    const sg=document.getElementById('son-guncelleme');
+    if(sg) sg.textContent=saat;
+    const gun=tr.getDay(), dak=tr.getHours()*60+tr.getMinutes();
+    const acik=gun>=1&&gun<=5&&dak>=580&&dak<1080;
+    const d=document.getElementById('borsa-durum');
+    if(d&&!d.textContent.includes('YUKLEN')){
+      const yeni=acik?'BORSA ACIK':'BORSA KAPALI';
+      if(d.textContent!==yeni){d.textContent=yeni;d.className='badge'+(acik?'':' kapali');}
+    }
+  }catch(e){}
+}
+saatGuncelle();
+setInterval(saatGuncelle,1000);
 
 alarmGun(); portfoyGun(); veriCek(); setInterval(veriCek,10000);
 </script>
