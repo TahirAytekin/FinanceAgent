@@ -514,6 +514,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .met{background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:10px;text-align:center;}
 .met-l{font-size:10px;color:var(--mu);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
 .met-v{font-size:13px;font-weight:700;color:var(--tx);}
+.modal-sekmeler{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--bd);}
+.modal-sekme{padding:7px 18px;border:none;background:none;color:var(--mu);font-size:12px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;transition:all .18s;}
+.modal-sekme:hover{color:var(--tx);}
+.modal-sekme.active{color:var(--ac);border-bottom-color:var(--ac);}
+.fin-tablo{width:100%;border-collapse:collapse;font-size:11px;}
+.fin-tablo th{color:var(--mu);font-weight:600;padding:5px 7px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap;}
+.fin-tablo th:first-child{text-align:left;}
+.fin-tablo td{padding:5px 7px;text-align:right;border-bottom:1px solid rgba(46,42,72,.35);white-space:nowrap;}
+.fin-tablo td:first-child{text-align:left;color:var(--mu);}
+.fin-tablo tbody tr:last-child td{font-weight:700;color:var(--tx);border-top:1px solid var(--bd);}
+.fin-2kol{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.fin-grafik-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
+.fin-grafik-baslik{font-size:10px;color:var(--mu);margin-bottom:4px;text-align:center;}
+.oran-serit{display:flex;gap:0;flex-wrap:wrap;background:var(--sf);border-radius:8px;margin-bottom:14px;overflow:hidden;border:1px solid var(--bd);}
+.oran-item{flex:1;min-width:80px;padding:9px 8px;text-align:center;border-right:1px solid var(--bd);}
+.oran-item:last-child{border-right:none;}
+.oran-l{font-size:9px;color:var(--mu);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+.oran-v{font-size:13px;font-weight:700;color:var(--tx);}
+@media(max-width:640px){.fin-2kol{grid-template-columns:1fr;}.fin-grafik-grid{grid-template-columns:1fr;}.modal-kart{padding:14px;}}
 @media(max-width:1100px){.sb{width:195px;min-width:195px;}}
 @media(max-width:880px){.sb{display:none;}.sg,.trg{grid-template-columns:repeat(2,1fr);}.ekgd{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}.met-grid{grid-template-columns:repeat(2,1fr);}}
@@ -1485,7 +1504,10 @@ function sirketKartlariGun(sn){
   el.innerHTML=h;
 }
 
+let _modalSembol=null;
+
 function sirketAc(sembol){
+  _modalSembol=sembol;
   const modal=document.getElementById('sirket-modal');
   modal.style.display='flex';
   document.getElementById('modal-icerik').innerHTML='<div class="es">Yukleniyor...</div>';
@@ -1495,40 +1517,119 @@ function sirketAc(sembol){
     const fmt=(v,dec,suf)=>v==null?'-':(Number(v).toLocaleString('tr-TR',{maximumFractionDigits:dec||0}))+(suf||'');
     const fmtP=v=>v==null?'-':v>=1e12?(v/1e12).toFixed(1)+' T TL':v>=1e9?(v/1e9).toFixed(1)+' Mr TL':v>=1e6?(v/1e6).toFixed(0)+' Mn TL':fmt(v,0,' TL');
     const metriks=[
-      ['Piyasa Degeri',fmtP(f.piyasaDegeri)],
-      ['F/K Orani',fmt(f.fk,1)],
-      ['PD/DD',fmt(f.pd_dd,2)],
-      ['52H Yuksek',fmt(f.yuksek52,2,' TL')],
-      ['52H Dusuk',fmt(f.dusuk52,2,' TL')],
+      ['Piyasa Degeri',fmtP(f.piyasaDegeri)],['F/K',fmt(f.fk,1)],['PD/DD',fmt(f.pd_dd,2)],
+      ['52H Yuksek',fmt(f.yuksek52,2,' TL')],['52H Dusuk',fmt(f.dusuk52,2,' TL')],
       ['Temettu',f.temettu!=null?'%'+Number(f.temettu*100).toFixed(1):'-'],
-      ['Beta',fmt(f.beta,2)],
-      ['Calisan',f.calisanSayisi?Number(f.calisanSayisi).toLocaleString('tr-TR'):'-'],
+      ['Beta',fmt(f.beta,2)],['Calisan',f.calisanSayisi?Number(f.calisanSayisi).toLocaleString('tr-TR'):'-'],
     ];
-    let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">'+
+    let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">'+
       '<div style="display:flex;gap:12px;align-items:center">'+
       '<div style="width:50px;height:50px;border-radius:12px;background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--ac)">'+sembol.substring(0,2)+'</div>'+
       '<div><div style="font-size:17px;font-weight:700;color:var(--tx)">'+d.ad+'</div>'+
-      '<div style="font-size:11px;color:var(--mu);margin-top:2px">'+sembol+' - '+d.sektor+'</div></div></div>'+
+      '<div style="font-size:11px;color:var(--mu);margin-top:2px">'+sembol+' — '+d.sektor+'</div></div></div>'+
       '<div style="display:flex;gap:8px;align-items:center">'+
       (s?'<span class="pill '+kc+'">'+s.karar+'</span>':'')+
       '<button onclick="sirketKapat()" style="background:var(--sf);border:1px solid var(--bd);color:var(--mu);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1">x</button>'+
       '</div></div>';
-    if(d.aciklama) h+='<div style="font-size:12px;color:var(--mu);line-height:1.65;padding:12px;background:var(--sf);border-radius:8px;margin-bottom:2px">'+d.aciklama+'</div>';
-    h+='<div class="met-grid">';
-    metriks.forEach(function(m){h+='<div class="met"><div class="met-l">'+m[0]+'</div><div class="met-v">'+m[1]+'</div></div>';});
-    h+='</div>';
+    h+='<div class="modal-sekmeler">'+
+      '<button class="modal-sekme active" data-tab="ozet" onclick="modalSekme(this.dataset.tab,this)">Ozet</button>'+
+      '<button class="modal-sekme" data-tab="finansallar" onclick="modalSekme(this.dataset.tab,this)">Finansallar</button>'+
+      '</div>';
+    let ozet='';
+    if(d.aciklama) ozet+='<div style="font-size:12px;color:var(--mu);line-height:1.65;padding:12px;background:var(--sf);border-radius:8px;margin-bottom:12px">'+d.aciklama+'</div>';
+    ozet+='<div class="met-grid">';
+    metriks.forEach(function(m){ozet+='<div class="met"><div class="met-l">'+m[0]+'</div><div class="met-v">'+m[1]+'</div></div>';});
+    ozet+='</div>';
     if(s){
       const dr=s.degisim>=0?'gr':'re';
-      h+='<div style="background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:11px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px">'+
+      ozet+='<div style="background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:11px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:10px">'+
         '<span>Fiyat: <strong>'+Number(s.fiyat).toFixed(2)+' TL</strong></span>'+
-        '<span class="'+dr+'">Degisim: '+(s.degisim>=0?'+':'')+Number(s.degisim).toFixed(2)+'%</span>'+
+        '<span class="'+dr+'">'+( s.degisim>=0?'+':'')+Number(s.degisim).toFixed(2)+'%</span>'+
         '<span>RSI: <strong>'+Number(s.rsi).toFixed(1)+'</strong></span>'+
         '<span class="gr">Hedef: <strong>'+Number(s.hedef).toFixed(2)+' TL</strong></span>'+
         '<span class="re">Stop: <strong>'+Number(s.stop).toFixed(2)+' TL</strong></span>'+
         '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span></div>';
     }
+    h+='<div id="modal-ozet-k">'+ozet+'</div>';
+    h+='<div id="modal-fin-k" style="display:none"><div class="es">Yukleniyor...</div></div>';
     document.getElementById('modal-icerik').innerHTML=h;
   }).catch(function(){document.getElementById('modal-icerik').innerHTML='<div class="es">Veri alinamadi.</div>';});
+}
+
+function modalSekme(id,btn){
+  document.getElementById('modal-ozet-k').style.display=id==='ozet'?'':'none';
+  document.getElementById('modal-fin-k').style.display=id==='finansallar'?'':'none';
+  document.querySelectorAll('.modal-sekme').forEach(function(b){b.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+  if(id==='finansallar') finansallarYukle(_modalSembol);
+}
+
+function finansallarYukle(sembol){
+  const el=document.getElementById('modal-fin-k');
+  if(!el||el.dataset.yuklendi===sembol) return;
+  el.innerHTML='<div class="es">Finansal veriler yukleniyor...</div>';
+  fetch('/api/finans/'+sembol).then(r=>r.json()).then(function(d){
+    if(d.error){el.innerHTML='<div class="es">Veri alinamadi.</div>';return;}
+    const c=d.ceyrekler||[], c0=c[0]||'-', c1=c[1]||'-';
+    const fmtN=v=>v==null?'-':Number(v).toLocaleString('tr-TR');
+    function pctStr(arr){
+      const v0=arr[0],v1=arr[1];
+      if(v0==null||v1==null||v1===0) return '-';
+      const r=((v0-v1)/Math.abs(v1)*100);
+      return (r>0?'+':'')+r.toFixed(0)+'%';
+    }
+    function buildTablo(baslik,satirlar){
+      let t='<table class="fin-tablo"><thead><tr>'+
+        '<th style="text-align:left">'+baslik+' <span style="font-weight:400">(Bin TRY)</span></th>'+
+        '<th>'+c0+'</th><th style="color:var(--mu)">'+c1+'</th><th>%</th>'+
+        '</tr></thead><tbody>';
+      satirlar.forEach(function(sat){
+        const p=pctStr(sat.deger);
+        const pc=p.startsWith('+')?'style="color:var(--gr)"':p.startsWith('-')?'style="color:var(--re)"':'';
+        t+='<tr><td>'+sat.etiket+'</td>'+
+          '<td>'+fmtN(sat.deger[0])+'</td>'+
+          '<td style="color:var(--mu)">'+fmtN(sat.deger[1])+'</td>'+
+          '<td '+pc+'>'+p+'</td></tr>';
+      });
+      t+='</tbody></table>';
+      return t;
+    }
+    const o=d.oranlar||{};
+    const fmtO=v=>v==null?'—':v;
+    let html='<div class="oran-serit">'+
+      '<div class="oran-item"><div class="oran-l">F/K</div><div class="oran-v">'+(o.fk?Number(o.fk).toFixed(1):'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">PD/DD</div><div class="oran-v">'+(o.pd_dd?Number(o.pd_dd).toFixed(2):'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">ROE</div><div class="oran-v">'+(o.roe!=null?'%'+o.roe:'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">ROA</div><div class="oran-v">'+(o.roa!=null?'%'+o.roa:'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">Temettu</div><div class="oran-v">'+(o.temettu?'%'+(o.temettu*100).toFixed(1):'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">Beta</div><div class="oran-v">'+(o.beta?Number(o.beta).toFixed(2):'—')+'</div></div>'+
+      '</div>';
+    html+='<div class="fin-2kol">'+
+      '<div>'+buildTablo('Ozet Gelir Tablosu',d.gelir)+'</div>'+
+      '<div>'+buildTablo('Ozet Bilanco',d.bilanco)+'</div>'+
+      '</div>';
+    html+='<div class="fin-grafik-grid">'+
+      '<div><div class="fin-grafik-baslik">'+d.grafik.net_kar.etiket+'</div><div id="fg-nk" style="height:130px"></div></div>'+
+      '<div><div class="fin-grafik-baslik">'+d.grafik.ana_gelir.etiket+'</div><div id="fg-ag" style="height:130px"></div></div>'+
+      '<div><div class="fin-grafik-baslik">'+d.grafik.ozkaynak.etiket+'</div><div id="fg-ok" style="height:130px"></div></div>'+
+      '</div>';
+    el.innerHTML=html;
+    el.dataset.yuklendi=sembol;
+    const BL={paper_bgcolor:'#07050e',plot_bgcolor:'#07050e',font:{color:'#5e5a7a',size:9},
+      margin:{t:4,r:4,b:28,l:52},showlegend:false};
+    function barCiz(divId,veriler,etiketler){
+      const n=Math.min(veriler.length,etiketler.length);
+      const x=[],y=[];
+      for(let i=n-1;i>=0;i--){x.push(etiketler[i]||'');y.push(veriler[i]||0);}
+      Plotly.newPlot(divId,[{type:'bar',x:x,y:y,
+        marker:{color:y.map(v=>v>=0?'rgba(99,102,241,.75)':'rgba(239,68,68,.75)')}}],
+        {...BL,xaxis:{gridcolor:'#1c1830',tickfont:{size:8}},yaxis:{gridcolor:'#1c1830',tickformat:'.2s'}},
+        {responsive:true,displayModeBar:false});
+    }
+    barCiz('fg-nk',d.grafik.net_kar.deger,c);
+    barCiz('fg-ag',d.grafik.ana_gelir.deger,c);
+    barCiz('fg-ok',d.grafik.ozkaynak.deger,c);
+  }).catch(function(){el.innerHTML='<div class="es">Veri alinamadi.</div>';});
 }
 
 function sirketKapat(){document.getElementById('sirket-modal').style.display='none';}
@@ -2086,6 +2187,7 @@ def json_temizle(data):
         return data
 
 _egitim_basladi = False
+_finans_cache = {}   # sembol -> (datetime, data)
 
 @app.route('/api/veri')
 def api_veri():
@@ -2138,6 +2240,96 @@ def api_hisse(sembol):
         'finans'  : fin,
         'sinyal'  : sinyal,
     }))
+
+@app.route('/api/finans/<sembol>')
+def api_finans(sembol):
+    global _finans_cache
+    sembol_is = sembol + '.IS' if not sembol.endswith('.IS') else sembol
+    if sembol in _finans_cache:
+        ts, cached = _finans_cache[sembol]
+        if (datetime.now() - ts).total_seconds() < 86400:
+            return jsonify(cached)
+    try:
+        ticker = yf.Ticker(sembol_is)
+        inc = ticker.quarterly_income_stmt
+        bal = ticker.quarterly_balance_sheet
+        info = ticker.info or {}
+
+        def safe(df, key, n=5):
+            if df is None or df.empty or key not in df.index:
+                return [None] * n
+            vals = list(df.loc[key].values[:n])
+            return [None if (v is None or pd.isna(v)) else int(v / 1000) for v in vals]
+
+        ceyrekler = []
+        if inc is not None and not inc.empty:
+            ceyrekler = [str(c)[:7].replace('-', '/') for c in list(inc.columns)[:5]]
+
+        fi = safe(inc, 'Interest Income')
+        tg = safe(inc, 'Total Revenue')
+        try:
+            banka = (fi[0] or 0) > (tg[0] or 1) * 0.4
+        except Exception:
+            banka = False
+
+        if banka:
+            gelir = [
+                {'etiket': 'Faiz Gelirleri',    'deger': safe(inc, 'Interest Income')},
+                {'etiket': 'Faiz Giderleri',    'deger': [(-v if v else None) for v in safe(inc, 'Interest Expense')]},
+                {'etiket': 'Net Faiz Geliri',   'deger': safe(inc, 'Net Interest Income')},
+                {'etiket': 'Net Faaliyet Kari', 'deger': safe(inc, 'Pretax Income')},
+                {'etiket': 'Net Donem Kari',    'deger': safe(inc, 'Net Income')},
+            ]
+            ana_gelir_key = 'Net Interest Income'
+            ana_gelir_lbl = 'Net Faiz Geliri'
+        else:
+            gelir = [
+                {'etiket': 'Toplam Gelir',     'deger': safe(inc, 'Total Revenue')},
+                {'etiket': 'Brut Kar',         'deger': safe(inc, 'Gross Profit')},
+                {'etiket': 'Faaliyet Kari',    'deger': safe(inc, 'Operating Income')},
+                {'etiket': 'Vergi Oncesi Kar', 'deger': safe(inc, 'Pretax Income')},
+                {'etiket': 'Net Donem Kari',   'deger': safe(inc, 'Net Income')},
+            ]
+            ana_gelir_key = 'Total Revenue'
+            ana_gelir_lbl = 'Toplam Gelir'
+
+        bilanco = [
+            {'etiket': 'Toplam Varliklar',    'deger': safe(bal, 'Total Assets')},
+            {'etiket': 'Nakit ve Benzerleri', 'deger': safe(bal, 'Cash And Cash Equivalents')},
+            {'etiket': 'Toplam Borc',         'deger': safe(bal, 'Total Debt')},
+            {'etiket': 'Yukumlulukler',       'deger': safe(bal, 'Total Liabilities Net Minority Interest')},
+            {'etiket': 'Ozkaynaklar',         'deger': safe(bal, 'Stockholders Equity')},
+        ]
+
+        roe = info.get('returnOnEquity')
+        roa = info.get('returnOnAssets')
+        oranlar = {
+            'fk':      info.get('trailingPE'),
+            'pd_dd':   info.get('priceToBook'),
+            'roe':     round(roe * 100, 1) if roe else None,
+            'roa':     round(roa * 100, 1) if roa else None,
+            'temettu': round(info.get('dividendYield', 0) or 0, 4),
+            'beta':    info.get('beta'),
+        }
+
+        result = json_temizle({
+            'sembol':   sembol,
+            'ceyrekler': ceyrekler,
+            'banka':    banka,
+            'gelir':    gelir,
+            'bilanco':  bilanco,
+            'oranlar':  oranlar,
+            'grafik': {
+                'net_kar':   {'etiket': 'Net Donem Kari', 'deger': safe(inc, 'Net Income')},
+                'ana_gelir': {'etiket': ana_gelir_lbl,    'deger': safe(inc, ana_gelir_key)},
+                'ozkaynak':  {'etiket': 'Ozkaynaklar',   'deger': safe(bal, 'Stockholders Equity')},
+            },
+        })
+        _finans_cache[sembol] = (datetime.now(), result)
+        return jsonify(result)
+    except Exception as e:
+        print(f"[FINANS] {sembol}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/portfoy/<sid>', methods=['GET'])
 def api_portfoy_oku(sid):
