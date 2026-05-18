@@ -1884,7 +1884,7 @@ function indBilgiGun(){
     const bull=ma20v>ma50v;
     const spread=Math.abs(ma20v-ma50v)/ma50v*100;
     const dur=bull?(spread>1.5?'Golden Cross ↑':'MA20 > MA50'):(spread>1.5?'Death Cross ↓':'MA20 < MA50');
-    _ik('ik-ma',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA20\'ye göre)',dur,'var(--tx)',
+    _ik('ik-ma',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA20\\'ye gore)',dur,'var(--tx)',
         bull?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)',bull?'#22c55e':'#ef4444');
   }
 
@@ -1892,7 +1892,7 @@ function indBilgiGun(){
   if(fiyat&&ma200v){
     const pct=(fiyat-ma200v)/ma200v*100;
     const ust=fiyat>ma200v;
-    _ik('ik-ma200',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA200\'e göre)',
+    _ik('ik-ma200',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA200\\'e gore)',
         ust?'Fiyat MA200 Üstünde':'Fiyat MA200 Altında','var(--tx)',
         ust?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)',ust?'#22c55e':'#ef4444');
   }
