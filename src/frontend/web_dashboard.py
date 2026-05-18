@@ -378,15 +378,30 @@ def alarmlar_db_kontrol(sinyaller):
     if conn is None:
         return
     try:
-        fm = {s['sembol'].replace('.IS',''): s['fiyat'] for s in sinyaller}
+        fm = {s['sembol'].replace('.IS',''): s for s in sinyaller}
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT id,sembol,yon,fiyat FROM lidya_alarmlar WHERE tetiklendi=FALSE")
             for alarm in cur.fetchall():
-                g = fm.get(alarm['sembol'])
-                if g is None:
+                sinyal = fm.get(alarm['sembol'])
+                if sinyal is None:
                     continue
-                hit = ((alarm['yon']=='above' and g>=alarm['fiyat']) or
-                       (alarm['yon']=='below' and g<=alarm['fiyat']))
+                g     = sinyal.get('fiyat')
+                rsi   = sinyal.get('rsi')
+                karar = sinyal.get('karar')
+                yon   = alarm['yon']
+                hit = False
+                if yon == 'above' and g is not None and alarm['fiyat'] is not None:
+                    hit = g >= float(alarm['fiyat'])
+                elif yon == 'below' and g is not None and alarm['fiyat'] is not None:
+                    hit = g <= float(alarm['fiyat'])
+                elif yon == 'rsi_ob' and rsi is not None:
+                    hit = rsi > 70
+                elif yon == 'rsi_os' and rsi is not None:
+                    hit = rsi < 30
+                elif yon == 'sinyal_al':
+                    hit = karar == 'AL'
+                elif yon == 'sinyal_sat':
+                    hit = karar == 'SAT'
                 if hit:
                     cur.execute("UPDATE lidya_alarmlar SET tetiklendi=TRUE WHERE id=%s",
                                 (alarm['id'],))
@@ -563,6 +578,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   .sg{grid-template-columns:repeat(2,1fr);}
   .trg{grid-template-columns:repeat(2,1fr);}
 }
+/* Ekonomik Takvim */
+.tak-filtre{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.tak-chip{padding:3px 11px;border-radius:20px;font-size:11px;border:1px solid var(--bd);background:none;color:var(--mu);cursor:pointer;transition:all .15s;}
+.tak-chip:hover{border-color:var(--ac);color:var(--tx);}
+.tak-chip.active{background:rgba(167,139,250,.14);border-color:var(--ac);color:var(--ac);}
+.tak-item{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid rgba(46,42,72,.3);}
+.tak-item:last-child{border-bottom:none;}
+.tak-tarih-blok{min-width:52px;text-align:center;padding-top:2px;}
+.tak-gun{font-size:22px;font-weight:700;line-height:1.05;}
+.tak-ay{font-size:9px;color:var(--mu);text-transform:uppercase;letter-spacing:.06em;}
+.tak-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+.tak-kart-ic{flex:1;}
+.tak-basl{font-size:12px;font-weight:600;color:var(--tx);line-height:1.4;}
+.tak-alt{font-size:10px;color:var(--mu);margin-top:3px;line-height:1.45;}
+.tak-gecti .tak-basl{color:var(--cf);}
+.tak-gecti .tak-gun{color:var(--mu)!important;}
+.tak-gecti{opacity:.5;}
+.tak-aktif .tak-kart-ic{border-left:2px solid var(--ac);padding-left:9px;}
+.tak-geri-sayim{font-size:10px;font-weight:600;margin-top:5px;}
+/* Alarm Merkezi */
+.alarm-tur-btn{padding:3px 10px;border-radius:5px;border:1px solid var(--bd);background:none;color:var(--mu);font-size:11px;cursor:pointer;transition:all .18s;}
+.alarm-tur-btn:hover{border-color:var(--ac);color:var(--tx);}
+.alarm-tur-btn.active{background:rgba(167,139,250,.14);border-color:var(--ac);color:var(--ac);}
+.notif-item{padding:9px 12px;border-bottom:1px solid rgba(46,42,72,.3);display:flex;gap:10px;align-items:flex-start;}
+.notif-item:last-child{border-bottom:none;}
+.notif-dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -597,6 +638,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="tb" onclick="tabAc('grafik',this)">Grafik</button>
   <button class="tb" onclick="tabAc('trackrecord',this)">Track Record</button>
   <button class="tb" onclick="tabAc('portfoy',this)">Portföy</button>
+  <button class="tb" onclick="tabAc('takvim',this)">Takvim</button>
+  <button class="tb" onclick="tabAc('alarmlar',this)">Alarmlar</button>
 </nav>
 
 <div class="lay">
@@ -760,6 +803,61 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 </div>
 
+<!-- TAB: Ekonomik Takvim -->
+<div id="tab-takvim" class="tp">
+<div class="con">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px">
+      <div class="ctit" style="margin:0">2026 Ekonomik Takvim</div>
+      <div id="tak-sonraki" style="font-size:11px;color:var(--ac);font-weight:600"></div>
+    </div>
+    <div class="tak-filtre">
+      <button class="tak-chip active" onclick="takFiltre(\'hepsi\',this)">Tümü</button>
+      <button class="tak-chip" onclick="takFiltre(\'tcmb\',this)">TCMB PPK</button>
+      <button class="tak-chip" onclick="takFiltre(\'tuik\',this)">TÜİK</button>
+      <button class="tak-chip" onclick="takFiltre(\'fed\',this)">FED</button>
+      <button class="tak-chip" onclick="takFiltre(\'bilanco\',this)">Bilanço</button>
+    </div>
+    <div id="takvim-listesi"><div class="es">Yükleniyor...</div></div>
+  </div>
+</div>
+</div>
+
+<!-- TAB: Alarmlar -->
+<div id="tab-alarmlar" class="tp">
+<div class="con">
+  <div class="card">
+    <div class="ctit">Alarm Ekle</div>
+    <div class="pf">
+      <input class="pi" id="al2-sembol" placeholder="Sembol (örn: AKBNK)" list="hl2" style="max-width:140px">
+      <select class="sel" id="al2-tur" onchange="alarmTurGun()">
+        <option value="above">Fiyat Üstüne Çıkınca ↑</option>
+        <option value="below">Fiyat Altına Düşünce ↓</option>
+        <option value="rsi_ob">RSI Aşırı Alım (RSI &gt; 70)</option>
+        <option value="rsi_os">RSI Aşırı Satım (RSI &lt; 30)</option>
+        <option value="sinyal_al">AL Sinyali Gelince</option>
+        <option value="sinyal_sat">SAT Sinyali Gelince</option>
+      </select>
+      <input class="pi" id="al2-fiyat" placeholder="Hedef Fiyat ₺" type="number" style="max-width:135px">
+      <button class="ba" onclick="alarm2Ekle()">+ Alarm</button>
+    </div>
+    <div id="alarm2-listesi"><div class="es">Henüz alarm yok.</div></div>
+  </div>
+  <div class="card" id="tetik-kart" style="display:none">
+    <div class="ctit" style="color:var(--gr)">✓ Tetiklenen Alarmlar</div>
+    <div id="tetik-listesi"></div>
+  </div>
+  <div class="card">
+    <div class="ctit">Tarayıcı Bildirimleri</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <div id="bildirim-durum" style="font-size:12px;color:var(--mu)">Kontrol ediliyor...</div>
+      <button class="ba" id="bildirim-btn" onclick="bildirimIzniAl()" style="display:none">İzin Ver</button>
+    </div>
+    <div style="font-size:11px;color:var(--mu)">Alarmlar tetiklendiğinde masaüstü bildirimi alırsınız. Tarayıcınız açık olmalıdır.</div>
+  </div>
+</div>
+</div>
+
 </main>
 
 <!-- RIGHT: Fiyatlar -->
@@ -809,6 +907,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
     Portföy
   </button>
+  <button class="bni" id="bni-takvim" onclick="tabMob('takvim',this)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Takvim
+  </button>
+  <button class="bni" id="bni-alarmlar" onclick="tabMob('alarmlar',this)">
+    <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+    Alarmlar
+  </button>
 </nav>
 
 <div id="sirket-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)sirketKapat()">
@@ -845,6 +951,8 @@ function tabAc(id,btn){
   if(id==='grafik') grafikGuncelle();
   if(id==='trackrecord') perfCiz();
   if(id==='portfoy'){portfoyGun();alarmGun();const sk=document.getElementById('sync-kod');if(sk) sk.value=SID;}
+  if(id==='takvim') takvimYukle();
+  if(id==='alarmlar'){alarm2Gun();bildirimDurumGun();alarmTurGun();}
 }
 
 function tabMob(id,btn){
@@ -1454,13 +1562,27 @@ function alarmKontrol(){
   a.forEach((alarm,i)=>{
     if(alarm.tetiklendi) return;
     const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
-    const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
-    if(hit){a[i].tetiklendi=true;ch=true;
-      if('Notification' in window&&Notification.permission==='granted')
-        new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
+    const sinS=sinyalVerisi.find(s=>s.sembol.replace('.IS','')===alarm.sembol);
+    let hit=false;
+    if(alarm.yon==='above') hit=g>=alarm.fiyat;
+    else if(alarm.yon==='below') hit=g<=alarm.fiyat;
+    else if(alarm.yon==='rsi_ob'&&sinS) hit=sinS.rsi>70;
+    else if(alarm.yon==='rsi_os'&&sinS) hit=sinS.rsi<30;
+    else if(alarm.yon==='sinyal_al'&&sinS) hit=sinS.karar==='AL';
+    else if(alarm.yon==='sinyal_sat'&&sinS) hit=sinS.karar==='SAT';
+    if(hit){
+      a[i].tetiklendi=true; ch=true;
+      if('Notification' in window&&Notification.permission==='granted'){
+        const msg=alarm.yon==='rsi_ob'?alarm.sembol+' RSI asiri alim bolgesine girdi!':
+          alarm.yon==='rsi_os'?alarm.sembol+' RSI asiri satim bolgesinde!':
+          alarm.yon==='sinyal_al'?alarm.sembol+' AL sinyali verdi!':
+          alarm.yon==='sinyal_sat'?alarm.sembol+' SAT sinyali verdi!':
+          alarm.sembol+' -> '+g.toFixed(2)+' TL ('+(alarm.yon==='above'?'yukseldi':'dustu')+')';
+        new Notification('LIDYA Alarm',{body:msg});
+      }
     }
   });
-  if(ch){_lsAlarmlarKaydet(a); _alarmRender(a);}
+  if(ch){_lsAlarmlarKaydet(a); _alarmRender(a); _alarm2Render(a);}
 }
 
 function alarmGun(){
@@ -1485,6 +1607,178 @@ function syncUygula(){
   localStorage.setItem('lidya_sid',giris);
   alert('Sync kodu uygulandı! Sayfa yenileniyor...');
   location.reload();
+}
+
+// ── Ekonomik Takvim ──────────────────────────────────
+let _takFiltre='hepsi', _takvimVeri=[];
+
+function takvimYukle(){
+  const el=document.getElementById('takvim-listesi');
+  if(!el||_takvimVeri.length) return takvimRender();
+  fetch('/api/takvim').then(r=>r.json()).then(d=>{_takvimVeri=d;takvimRender();})
+    .catch(()=>{if(el) el.innerHTML='<div class="es">Veri alinamadi.</div>';});
+}
+
+function takFiltre(tur,btn){
+  _takFiltre=tur;
+  document.querySelectorAll('.tak-chip').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  takvimRender();
+}
+
+function takvimRender(){
+  const el=document.getElementById('takvim-listesi');
+  if(!el) return;
+  const bugun=new Date(); bugun.setHours(0,0,0,0);
+  const fil=_takFiltre==='hepsi'?_takvimVeri:_takvimVeri.filter(e=>e.kategori===_takFiltre);
+  const gelecek=fil.filter(e=>new Date(e.tarih)>=bugun);
+  const sonEl=document.getElementById('tak-sonraki');
+  if(gelecek.length&&sonEl){
+    const s=gelecek[0];
+    const fark=Math.ceil((new Date(s.tarih)-bugun)/86400000);
+    sonEl.textContent=fark===0?'Bugün: '+s.baslik:(fark===1?'Yarın':fark+' gün sonra')+': '+s.baslik;
+  } else if(sonEl) sonEl.textContent='';
+  if(!fil.length){el.innerHTML='<div class="es">Bu kategoride etkinlik yok.</div>';return;}
+  const renkMap={tcmb:'#a78bfa',tuik:'#22c55e',fed:'#f59e0b',bilanco:'#06b6d4',diger:'#6b6488'};
+  const etiMap={tcmb:'TCMB PPK',tuik:'TÜİK',fed:'FED FOMC',bilanco:'Bilanço',diger:'Diğer'};
+  const gunAd=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+  const ayAd=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+  let h='';
+  fil.forEach(ev=>{
+    const d=new Date(ev.tarih);
+    const gecti=d<bugun;
+    const bugunmu=d.getTime()===bugun.getTime();
+    const fark=Math.ceil((d-bugun)/86400000);
+    const r=renkMap[ev.kategori]||renkMap.diger;
+    const et=etiMap[ev.kategori]||ev.kategori;
+    const geriS=gecti?'Geçti':bugunmu?'BUGÜN!':fark===1?'Yarın':fark+' gün';
+    const geriR=gecti?'var(--mu)':bugunmu?'var(--ac)':fark<=7?'var(--ye)':'var(--mu)';
+    const onemDot=ev.onem==='yuksek'?'<span style="color:var(--re);font-size:9px;margin-left:4px">●●●</span>':
+      ev.onem==='orta'?'<span style="color:var(--ye);font-size:9px;margin-left:4px">●●</span>':'';
+    h+='<div class="tak-item'+(gecti?' tak-gecti':'')+(bugunmu?' tak-aktif':'')+'">' +
+      '<div class="tak-tarih-blok">' +
+      '<div class="tak-gun" style="color:'+(gecti?'var(--mu)':r)+'">'+d.getDate()+'</div>' +
+      '<div class="tak-ay">'+gunAd[d.getDay()]+' '+ayAd[d.getMonth()]+'</div>' +
+      '</div>' +
+      '<div class="tak-kart-ic">' +
+      '<div><span class="tak-badge" style="background:'+r+'20;color:'+r+';border:1px solid '+r+'33">'+et+'</span>'+onemDot+'</div>' +
+      '<div class="tak-basl">'+ev.baslik+'</div>' +
+      (ev.aciklama?'<div class="tak-alt">'+ev.aciklama+'</div>':'')+
+      '<div class="tak-geri-sayim" style="color:'+geriR+'">'+geriS+'</div>' +
+      '</div></div>';
+  });
+  el.innerHTML=h;
+}
+
+// ── Alarm Merkezi ─────────────────────────────────────
+const ALARM_TUR_LBL={above:'Fiyat Üstü ↑',below:'Fiyat Altı ↓',rsi_ob:'RSI Aşırı Alım',rsi_os:'RSI Aşırı Satım',sinyal_al:'AL Sinyali',sinyal_sat:'SAT Sinyali'};
+
+function alarmTurGun(){
+  const tur=document.getElementById('al2-tur'); if(!tur) return;
+  const fp=document.getElementById('al2-fiyat'); if(!fp) return;
+  fp.style.display=(tur.value==='above'||tur.value==='below')?'':'none';
+}
+
+function alarm2Ekle(){
+  const s=(document.getElementById('al2-sembol').value||'').toUpperCase().trim();
+  const tur=document.getElementById('al2-tur').value;
+  const fp=document.getElementById('al2-fiyat');
+  const f=parseFloat(fp.value);
+  if(!s){alert('Sembol zorunlu.');return;}
+  if((tur==='above'||tur==='below')&&!f){alert('Fiyat zorunlu.');return;}
+  document.getElementById('al2-sembol').value=''; fp.value='';
+  const fiyatVal=(tur==='above'||tur==='below')?f:null;
+  const a=_lsAlarmlar();
+  a.push({sembol:s,yon:tur,fiyat:fiyatVal,tetiklendi:false,id:Date.now()});
+  _lsAlarmlarKaydet(a); _alarm2Render(a);
+  fetch('/api/alarmlar/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sembol:s,yon:tur,fiyat:fiyatVal})})
+    .then(r=>r.json()).then(res=>{if(res.id) alarm2Gun();}).catch(()=>{});
+}
+
+function alarm2Sil(key){
+  if(typeof key==='number'){
+    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'}).catch(()=>{});
+    const a=_lsAlarmlar().filter(x=>x.id!==key);
+    _lsAlarmlarKaydet(a); _alarm2Render(a);
+  } else {
+    const a=_lsAlarmlar();
+    const idx=a.findIndex(x=>JSON.stringify(x)===key);
+    if(idx>=0) a.splice(idx,1);
+    _lsAlarmlarKaydet(a); _alarm2Render(a);
+  }
+  alarmGun();
+}
+
+function alarm2Gun(){
+  const local=_lsAlarmlar(); _alarm2Render(local);
+  fetch('/api/alarmlar/'+SID).then(r=>r.json()).then(srv=>{
+    if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarm2Render(srv);}
+  }).catch(()=>{});
+}
+
+function _alarm2Render(a){
+  const el=document.getElementById('alarm2-listesi'); if(!el) return;
+  const aktif=a.filter(x=>!x.tetiklendi);
+  const tetik=a.filter(x=>x.tetiklendi);
+  const tk=document.getElementById('tetik-kart'), tl=document.getElementById('tetik-listesi');
+  if(tk&&tl){
+    if(tetik.length){
+      tk.style.display='';
+      let th='';
+      tetik.forEach(x=>{
+        const g=fiyatlar[x.sembol];
+        let detay='';
+        if(x.fiyat) detay='Hedef: '+parseFloat(x.fiyat).toFixed(2)+' TL'+(g?' · Şu an: '+g.toFixed(2)+' TL':'');
+        th+='<div class="notif-item">'+
+          '<div class="notif-dot" style="background:var(--gr)"></div>'+
+          '<div><div style="font-size:12px;font-weight:600">'+x.sembol+' — '+(ALARM_TUR_LBL[x.yon]||x.yon)+'</div>'+
+          (detay?'<div style="font-size:10px;color:var(--mu)">'+detay+'</div>':'')+
+          '</div></div>';
+      });
+      tl.innerHTML=th;
+    } else tk.style.display='none';
+  }
+  if(!aktif.length){el.innerHTML='<div class="es">Aktif alarm yok.</div>';return;}
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Tür</th><th>Koşul</th><th>Güncel</th><th>Durum</th><th></th></tr></thead><tbody>';
+  aktif.forEach(x=>{
+    const g=fiyatlar[x.sembol];
+    const delKey=x.id!==undefined?x.id:JSON.stringify(x);
+    let kosul='-';
+    if(x.yon==='above'||x.yon==='below') kosul=x.fiyat?parseFloat(x.fiyat).toFixed(2)+' TL':'-';
+    else if(x.yon==='rsi_ob') kosul='RSI > 70';
+    else if(x.yon==='rsi_os') kosul='RSI < 30';
+    else if(x.yon==='sinyal_al') kosul='Karar = AL';
+    else if(x.yon==='sinyal_sat') kosul='Karar = SAT';
+    h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
+      '<td style="font-size:10px;white-space:nowrap">'+(ALARM_TUR_LBL[x.yon]||x.yon)+'</td>'+
+      '<td>'+kosul+'</td>'+
+      '<td>'+(g!==undefined?g.toFixed(2)+' TL':'-')+'</td>'+
+      '<td><span class="alb">Bekliyor</span></td>'+
+      '<td><button class="bd2" onclick="alarm2Sil('+JSON.stringify(delKey)+')">Sil</button></td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table>';
+}
+
+function bildirimIzniAl(){
+  if(!('Notification' in window)) return;
+  Notification.requestPermission().then(()=>bildirimDurumGun());
+}
+
+function bildirimDurumGun(){
+  const el=document.getElementById('bildirim-durum');
+  const btn=document.getElementById('bildirim-btn');
+  if(!('Notification' in window)){
+    if(el) el.textContent='Tarayıcınız bildirimleri desteklemiyor.'; return;
+  }
+  const p=Notification.permission;
+  if(el){
+    el.textContent=p==='granted'?'✓ Bildirimler aktif':
+      p==='denied'?'✗ Bildirimler engellendi — tarayıcı ayarlarından açın':
+      'Bildirimler için izin verilmedi.';
+    el.style.color=p==='granted'?'var(--gr)':p==='denied'?'var(--re)':'var(--mu)';
+  }
+  if(btn) btn.style.display=p==='default'?'':'none';
 }
 
 function sirketKartlariGun(sn){
@@ -1654,7 +1948,7 @@ function saatGuncelle(){
 saatGuncelle();
 setInterval(saatGuncelle,1000);
 
-alarmGun(); portfoyGun(); veriCek(); setInterval(veriCek,10000);
+alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); veriCek(); setInterval(veriCek,10000);
 </script>
 </body>
 </html>'''
@@ -1909,6 +2203,52 @@ SIRKET_BILGI = {
         'aciklama': "Ford Otosan, Ford Motor Company ile Koc Holding'in ortakligiyla 1959 yilinda kurulan Turkiye'nin onde gelen otomotiv ureticisidir. Ticari arac, binek arac ve elektrikli arac uretimi gerceklestirmektedir.",
     },
 }
+
+EKONOMIK_TAKVIM = [
+    # TCMB PPK Faiz Kararları
+    {'tarih':'2026-01-23','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı ve faiz kararı açıklaması','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-03-06','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-04-17','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-05-22','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-07-03','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-08-14','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-09-25','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-11-06','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-12-18','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    # TÜİK TÜFE & ÜFE (aylık enflasyon)
+    {'tarih':'2026-01-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Aralık 2025 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-02-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Ocak 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-03-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Şubat 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-04-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Mart 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-05-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Nisan 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-06-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Mayıs 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-07-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Haziran 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-08-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Temmuz 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-09-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Ağustos 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-10-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Eylül 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-11-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Ekim 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-12-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Kasım 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    # TÜİK GSYiH
+    {'tarih':'2026-02-27','baslik':'TÜİK GSYiH Büyüme (Q4 2025)','aciklama':'2025 dördüncü çeyrek ve yıllık büyüme verisi','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-06-01','baslik':'TÜİK GSYiH Büyüme (Q1 2026)','aciklama':'2026 birinci çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-09-01','baslik':'TÜİK GSYiH Büyüme (Q2 2026)','aciklama':'2026 ikinci çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-11-30','baslik':'TÜİK GSYiH Büyüme (Q3 2026)','aciklama':'2026 üçüncü çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
+    # FED FOMC
+    {'tarih':'2026-01-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı ve karar açıklaması','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-03-19','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-05-07','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-06-18','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-07-30','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-09-17','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-10-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-12-10','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    # BIST Bilanço Sezonları
+    {'tarih':'2026-02-13','baslik':'Bilanço Sezonu Başlangıcı — Q4 2025','aciklama':'BIST şirketleri 2025 yıllık bilanço açıklamaları başlıyor','kategori':'bilanco','onem':'orta'},
+    {'tarih':'2026-03-31','baslik':'Bilanço Son Tarihi — Yıllık 2025','aciklama':'2025 yıllık bilanço açıklama son tarihi','kategori':'bilanco','onem':'dusuk'},
+    {'tarih':'2026-05-15','baslik':'Bilanço Sezonu — Q1 2026','aciklama':'BIST şirketleri 2026 birinci çeyrek bilançoları','kategori':'bilanco','onem':'orta'},
+    {'tarih':'2026-08-14','baslik':'Bilanço Sezonu — Q2 2026','aciklama':'BIST şirketleri 2026 ikinci çeyrek bilançoları','kategori':'bilanco','onem':'orta'},
+    {'tarih':'2026-11-13','baslik':'Bilanço Sezonu — Q3 2026','aciklama':'BIST şirketleri 2026 üçüncü çeyrek bilançoları','kategori':'bilanco','onem':'orta'},
+]
 
 def veri_hazirla(sembol):
     df = yf.Ticker(sembol).history(period="5y", interval="1d")
@@ -2330,6 +2670,10 @@ def api_finans(sembol):
     except Exception as e:
         print(f"[FINANS] {sembol}: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/takvim')
+def api_takvim():
+    return jsonify(sorted(EKONOMIK_TAKVIM, key=lambda e: e['tarih']))
 
 @app.route('/api/portfoy/<sid>', methods=['GET'])
 def api_portfoy_oku(sid):
