@@ -597,6 +597,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tak-gecti{opacity:.5;}
 .tak-aktif .tak-kart-ic{border-left:2px solid var(--ac);padding-left:9px;}
 .tak-geri-sayim{font-size:10px;font-weight:600;margin-top:5px;}
+/* İndikatör Rehberi Kartları */
+.ind-kart-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:9px;margin-top:14px;}
+.ind-kart{background:var(--ch);border:1px solid var(--bd);border-radius:9px;padding:12px;transition:border-color .2s;}
+.ind-kart:hover{border-color:rgba(167,139,250,.3);}
+.ind-k-kat{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 7px;border-radius:3px;display:inline-block;margin-bottom:7px;}
+.ind-k-isim{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:5px;}
+.ind-k-deger{font-size:18px;font-weight:700;line-height:1.2;margin-bottom:6px;min-height:22px;}
+.ind-k-durum{display:inline-block;padding:2px 9px;border-radius:12px;font-size:10px;font-weight:600;margin-bottom:8px;}
+.ind-k-acik{font-size:10px;color:var(--mu);line-height:1.5;margin-bottom:5px;}
+.ind-k-hint{font-size:9px;color:var(--cf);border-top:1px solid rgba(46,42,72,.4);padding-top:5px;line-height:1.5;}
 /* Alarm Merkezi */
 .alarm-tur-btn{padding:3px 10px;border-radius:5px;border:1px solid var(--bd);background:none;color:var(--mu);font-size:11px;cursor:pointer;transition:all .18s;}
 .alarm-tur-btn:hover{border-color:var(--ac);color:var(--tx);}
@@ -727,6 +737,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="rsi-alan" style="height:85px;margin-top:2px"></div>
     <div id="macd-alan" style="display:none;height:85px;margin-top:2px"></div>
     <div id="stoch-alan" style="display:none;height:85px;margin-top:2px"></div>
+    <div id="ind-rehber" style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--mu)">İndikatör Rehberi</span>
+        <span style="font-size:9px;color:var(--cf)">Seçili hisse için anlık değerler</span>
+      </div>
+      <div class="ind-kart-grid" id="ind-kart-grid"></div>
+    </div>
   </div>
 </div>
 </div>
@@ -1328,6 +1345,7 @@ function grafikGuncelle(){
   }
 
   grafikEventleriAktar();
+  indBilgiGun();
 }
 
 function trTabGun(tr){
@@ -1779,6 +1797,176 @@ function bildirimDurumGun(){
     el.style.color=p==='granted'?'var(--gr)':p==='denied'?'var(--re)':'var(--mu)';
   }
   if(btn) btn.style.display=p==='default'?'':'none';
+}
+
+// ── İndikatör Rehberi ────────────────────────────────
+const IND_KARTLAR=[
+  {id:'ik-rsi',kat:'Momentum',kr:'#6366f1',isim:'RSI (14)',
+   aciklama:'Göreceli Güç Endeksi. Alım ve satım baskısının gücünü ölçer.',
+   hint:'&gt; 70 → Aşırı Alım (dikkat) · &lt; 30 → Aşırı Satım (fırsat) · 50 = nötr'},
+  {id:'ik-ma',kat:'Trend',kr:'#f59e0b',isim:'MA20 / MA50',
+   aciklama:'Kısa/orta vadeli hareketli ortalamalar. Çapraz noktalar trend değişimini işaret eder.',
+   hint:'MA20 &gt; MA50 → Golden Cross (boğa) · MA20 &lt; MA50 → Death Cross (ayı)'},
+  {id:'ik-ma200',kat:'Uzun Vade',kr:'#ec4899',isim:'MA200',
+   aciklama:'200 günlük ortalama. Kurumsal yatırımcıların takip ettiği uzun vadeli trend göstergesi.',
+   hint:'Fiyat MA200 üstünde → uzun vadeli boğa · Altında → ayı piyasası'},
+  {id:'ik-bb',kat:'Volatilite',kr:'#8b5cf6',isim:'Bollinger Bantları',
+   aciklama:'Fiyat volatilitesini ölçer. Bantların daralması büyük bir hareket öncesi gözlenir.',
+   hint:'Bantlar daralınca kırılım bekle · Fiyat %80+ bölgesi → aşırı gerilmiş'},
+  {id:'ik-macd',kat:'Momentum',kr:'#6366f1',isim:'MACD Histogramı',
+   aciklama:'Trend momentum ve yön değişimlerini ölçer. Histogramın sıfır geçişi kritik sinyaldir.',
+   hint:'Histogram artıyor → momentum güçleniyor · Sıfır geçişi = yön değişimi'},
+  {id:'ik-stoch',kat:'Momentum',kr:'#06b6d4',isim:'Stochastic %K',
+   aciklama:'Kısa vadeli momentum. Fiyatın 14 günlük aralıktaki konumunu 0-100 arasında gösterir.',
+   hint:'&gt; 80 → Aşırı Alım · &lt; 20 → Aşırı Satım · %K/%D kesişimi sinyal verir'},
+  {id:'ik-vol',kat:'Hacim',kr:'#22c55e',isim:'Hacim Analizi',
+   aciklama:'Güncel hacimin 20 günlük ortalamasına oranı. Fiyat hareketinin güvenilirliğini teyit eder.',
+   hint:'Yüksek hacimli hareket daha güvenilir · Düşük hacimde yalancı kırılım riski'},
+  {id:'ik-atr',kat:'Risk / Stop',kr:'#f59e0b',isim:'ATR (Volatilite)',
+   aciklama:'Ortalama Gerçek Aralık. Günlük fiyat dalgalanmasını ölçer; stop ve hedef hesabında kullanılır.',
+   hint:'Stop önerisi: ATR × 1.5 · Hedef önerisi: ATR × 2.5 · Yüksek ATR = oynak piyasa'},
+  {id:'ik-sr',kat:'Teknik Seviye',kr:'#a78bfa',isim:'Destek / Direnç',
+   aciklama:'Pivot noktaları ile hesaplanan kritik fiyat seviyeleri. Alım-satım kararlarını destekler.',
+   hint:'Desteğe yakın → potansiyel AL · Dirence yakın → temkinli ol, hacim bekle'},
+];
+
+function indKartlarOlustur(){
+  const grid=document.getElementById('ind-kart-grid');if(!grid) return;
+  let h='';
+  IND_KARTLAR.forEach(k=>{
+    h+='<div class="ind-kart" id="'+k.id+'">'+
+      '<span class="ind-k-kat" style="background:'+k.kr+'20;color:'+k.kr+';border:1px solid '+k.kr+'33">'+k.kat+'</span>'+
+      '<div class="ind-k-isim">'+k.isim+'</div>'+
+      '<div class="ind-k-deger" id="'+k.id+'-v" style="color:var(--mu)">—</div>'+
+      '<div><span class="ind-k-durum" id="'+k.id+'-d" style="background:rgba(107,100,136,.12);color:var(--mu)">Veri bekleniyor</span></div>'+
+      '<div class="ind-k-acik">'+k.aciklama+'</div>'+
+      '<div class="ind-k-hint">'+k.hint+'</div>'+
+      '</div>';
+  });
+  grid.innerHTML=h;
+}
+
+function _ik(id,val,dur,valRenk,durBg,durRenk){
+  const v=document.getElementById(id+'-v'),d=document.getElementById(id+'-d');
+  if(v){v.textContent=val;v.style.color=valRenk||'var(--tx)';}
+  if(d){d.textContent=dur;d.style.background=durBg;d.style.color=durRenk;}
+}
+
+function indBilgiGun(){
+  const grid=document.getElementById('ind-kart-grid');
+  if(grid&&!grid.children.length) indKartlarOlustur();
+  const el=document.getElementById('hisse-sec');if(!el) return;
+  const hisse=el.value, veri=grafikVerisi[hisse];
+  if(!veri||!veri.tarihler) return;
+
+  const n=Math.min(period,veri.tarihler.length);
+  const sl=arr=>(arr||[]).slice(-n);
+  const last=arr=>{if(!arr) return null;const f=arr.filter(v=>v!=null);return f.length?f[f.length-1]:null;};
+
+  const cl=sl(veri.close),hi=sl(veri.high),lo=sl(veri.low),tar=sl(veri.tarihler);
+  const fiyat=last(cl),ma20v=last(sl(veri.ma20)),ma50v=last(sl(veri.ma50)),ma200v=last(sl(veri.ma200));
+  const rsi=last(sl(veri.rsi)),bbUv=last(sl(veri.bb_ust)),bbLv=last(sl(veri.bb_alt));
+  const macdHv=last(sl(veri.macd_h)),stKv=last(sl(veri.stoch_k)),volv=last(sl(veri.volume));
+
+  // RSI
+  if(rsi!=null){
+    const s=rsi>70?['Aşırı Alım','rgba(239,68,68,.14)','#ef4444']:
+             rsi<30?['Aşırı Satım','rgba(34,197,94,.14)','#22c55e']:
+             rsi>55?['Güçlü Bölge','rgba(34,197,94,.1)','#4ade80']:
+             rsi<45?['Zayıf Bölge','rgba(239,68,68,.08)','#f87171']:
+             ['Nötr Bölge','rgba(245,158,11,.1)','#f59e0b'];
+    _ik('ik-rsi',rsi.toFixed(1),s[0],rsi>70?'#ef4444':rsi<30?'#22c55e':'var(--tx)',s[1],s[2]);
+  }
+
+  // MA20/MA50
+  if(fiyat&&ma20v&&ma50v){
+    const pct=(fiyat-ma20v)/ma20v*100;
+    const bull=ma20v>ma50v;
+    const spread=Math.abs(ma20v-ma50v)/ma50v*100;
+    const dur=bull?(spread>1.5?'Golden Cross ↑':'MA20 > MA50'):(spread>1.5?'Death Cross ↓':'MA20 < MA50');
+    _ik('ik-ma',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA20\'ye göre)',dur,'var(--tx)',
+        bull?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)',bull?'#22c55e':'#ef4444');
+  }
+
+  // MA200
+  if(fiyat&&ma200v){
+    const pct=(fiyat-ma200v)/ma200v*100;
+    const ust=fiyat>ma200v;
+    _ik('ik-ma200',(pct>=0?'+':'')+pct.toFixed(1)+'%  (MA200\'e göre)',
+        ust?'Fiyat MA200 Üstünde':'Fiyat MA200 Altında','var(--tx)',
+        ust?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)',ust?'#22c55e':'#ef4444');
+  }
+
+  // Bollinger
+  if(fiyat&&bbUv&&bbLv&&bbUv>bbLv){
+    const k=(fiyat-bbLv)/(bbUv-bbLv)*100;
+    const gen=(bbUv-bbLv)/fiyat*100;
+    const s=k>80?['Üst Banda Yakın','rgba(239,68,68,.12)','#ef4444']:
+             k<20?['Alt Banda Yakın','rgba(34,197,94,.12)','#22c55e']:
+             ['Orta Bölge','rgba(245,158,11,.1)','#f59e0b'];
+    _ik('ik-bb',k.toFixed(0)+'%  (bant genişliği: '+gen.toFixed(1)+'%)',s[0],'var(--tx)',s[1],s[2]);
+  }
+
+  // MACD Histogram
+  if(macdHv!=null){
+    const pos=macdHv>=0;
+    _ik('ik-macd',(pos?'+':'')+macdHv.toFixed(4),
+        pos?'Pozitif Momentum':'Negatif Momentum',pos?'#22c55e':'#ef4444',
+        pos?'rgba(34,197,94,.12)':'rgba(239,68,68,.12)',pos?'#22c55e':'#ef4444');
+  }
+
+  // Stochastic
+  if(stKv!=null){
+    const s=stKv>80?['Aşırı Alım','rgba(239,68,68,.12)','#ef4444']:
+             stKv<20?['Aşırı Satım','rgba(34,197,94,.12)','#22c55e']:
+             ['Normal Bölge','rgba(245,158,11,.1)','#f59e0b'];
+    _ik('ik-stoch',stKv.toFixed(1),s[0],stKv>80?'#ef4444':stKv<20?'#22c55e':'var(--tx)',s[1],s[2]);
+  }
+
+  // Hacim
+  const volArr=sl(veri.volume).filter(v=>v!=null);
+  if(volv!=null&&volArr.length>5){
+    const vSlice=volArr.slice(-20);
+    const vMA=vSlice.reduce((a,b)=>a+b,0)/vSlice.length;
+    const oran=volv/vMA;
+    const s=oran>1.5?['Yüksek Hacim ↑','rgba(34,197,94,.12)','#22c55e']:
+             oran<0.7?['Düşük Hacim ↓','rgba(239,68,68,.08)','#f87171']:
+             ['Normal Hacim','rgba(245,158,11,.1)','#f59e0b'];
+    _ik('ik-vol',oran.toFixed(2)+'×  ort. ('+Math.round(volv/1000)+'K lot)',s[0],'var(--tx)',s[1],s[2]);
+  }
+
+  // ATR (14-bar approximate)
+  if(hi.length>15&&fiyat){
+    let s=0,c=0;
+    for(let i=Math.max(1,hi.length-14);i<hi.length;i++){
+      if(hi[i]!=null&&lo[i]!=null&&cl[i-1]!=null){
+        s+=Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1])); c++;
+      }
+    }
+    if(c>0){
+      const atr=s/c, pct=atr/fiyat*100;
+      const st=pct>4?['Yüksek Volatilite','rgba(239,68,68,.12)','#ef4444']:
+               pct>2?['Orta Volatilite','rgba(245,158,11,.1)','#f59e0b']:
+               ['Düşük Volatilite','rgba(34,197,94,.12)','#22c55e'];
+      _ik('ik-atr',atr.toFixed(2)+' TL  ('+pct.toFixed(1)+'%)',st[0],'var(--tx)',st[1],st[2]);
+    }
+  }
+
+  // S/R — en yakın destek/direnç
+  if(fiyat&&hi.length>0){
+    const pivs=_pivotHesapla(hi,lo,tar);
+    const dir=pivs.filter(p=>p.t==='R').sort((a,b)=>a.f-b.f)[0];
+    const des=pivs.filter(p=>p.t==='S').sort((a,b)=>b.f-a.f)[0];
+    if(dir||des){
+      const dStr=dir?'D '+dir.f.toFixed(2)+' TL (+'+((dir.f-fiyat)/fiyat*100).toFixed(1)+'%)':'';
+      const sStr=des?'S '+des.f.toFixed(2)+' TL ('+((des.f-fiyat)/fiyat*100).toFixed(1)+'%)':'';
+      const val=[dStr,sStr].filter(Boolean).join('   ');
+      const dMes=dir?(dir.f-fiyat)/fiyat*100:99, sMes=des?(fiyat-des.f)/fiyat*100:99;
+      const close=dMes<sMes;
+      _ik('ik-sr',val,close?'Dirençe Yakın':'Desteğe Yakın','var(--tx)',
+          close?'rgba(239,68,68,.1)':'rgba(34,197,94,.1)',close?'#ef4444':'#22c55e');
+    }
+  }
 }
 
 function sirketKartlariGun(sn){
