@@ -1654,35 +1654,6 @@ def kenar_verileri_cek():
         sonuc[grup] = liste
     return sonuc
 
-def kap_bildirimleri_cek():
-    """KAP'tan son kamuyu aydınlatma bildirimlerini çeker."""
-    try:
-        import requests as _req
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Referer': 'https://www.kap.org.tr/',
-            'Origin': 'https://www.kap.org.tr',
-        }
-        r = _req.post(
-            'https://www.kap.org.tr/bildirim/bist-kap-api/disclosuresQuery/query',
-            json={}, headers=headers, timeout=8
-        )
-        if r.status_code != 200:
-            return []
-        haberler = []
-        for item in (r.json() or [])[:6]:
-            sirket = item.get('companyName', '')
-            baslik = item.get('title', '') or item.get('disclosureTypeName', '')
-            idx    = item.get('disclosureIndex', '')
-            link   = f"https://www.kap.org.tr/tr/bildirim/{idx}" if idx else 'https://www.kap.org.tr'
-            tam    = f"{sirket}: {baslik}" if sirket and baslik else (sirket or baslik)
-            if tam:
-                haberler.append({'baslik': tam[:90], 'kaynak': 'KAP', 'link': link})
-        return haberler
-    except Exception:
-        return []
-
 def haber_cek():
     if _feedparser is None:
         return []
@@ -1697,6 +1668,8 @@ def haber_cek():
         ("https://feeds.reuters.com/reuters/businessNews",           "Reuters"),
         ("https://tr.investing.com/rss/news.rss",                    "Investing.com TR"),
         ("https://tr.investing.com/rss/stock_stock_picks.rss",       "Investing.com Hisse"),
+        ("https://www.ntv.com.tr/ekonomi.rss",                       "NTV Ekonomi"),
+        ("https://www.milliyet.com.tr/rss/rssNew/ekonomiRss.xml",    "Milliyet Ekonomi"),
     ]
     gruplar = []
     for url, kaynak in kaynaklar:
@@ -1712,7 +1685,6 @@ def haber_cek():
                     })
         except:
             pass
-    gruplar.extend(kap_bildirimleri_cek())
     return gruplar[:30]
 
 def ozellikler_ekle(df):
