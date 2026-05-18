@@ -1067,6 +1067,9 @@ function _portfoyRender(p){
   portfoyGrafikleriCiz(p);
 }
 
+function _lsPortfoy(){return JSON.parse(localStorage.getItem('portfoy')||'[]');}
+function _lsPortfoyKaydet(p){localStorage.setItem('portfoy',JSON.stringify(p));}
+
 function portfoyEkle(){
   const s=(document.getElementById('p-sembol').value||'').toUpperCase().trim();
   const a=parseFloat(document.getElementById('p-adet').value);
@@ -1075,35 +1078,30 @@ function portfoyEkle(){
   document.getElementById('p-sembol').value='';
   document.getElementById('p-adet').value='';
   document.getElementById('p-maliyet').value='';
+  const p=_lsPortfoy(); const i=p.findIndex(x=>x.sembol===s);
+  if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
+  _lsPortfoyKaydet(p);
+  _portfoyRender(p);
   fetch('/api/portfoy/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({sembol:s,adet:a,maliyet:m})})
-    .then(()=>portfoyGun())
-    .catch(()=>{
-      const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
-      const i=p.findIndex(x=>x.sembol===s);
-      if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
-      localStorage.setItem('portfoy',JSON.stringify(p));
-      portfoyGun();
-    });
+    body:JSON.stringify({sembol:s,adet:a,maliyet:m})}).catch(()=>{});
 }
 
 function portfoySil(s){
-  fetch('/api/portfoy/'+SID+'/'+s,{method:'DELETE'})
-    .then(()=>portfoyGun())
-    .catch(()=>{
-      localStorage.setItem('portfoy',JSON.stringify(JSON.parse(localStorage.getItem('portfoy')||'[]').filter(x=>x.sembol!==s)));
-      portfoyGun();
-    });
+  const p=_lsPortfoy().filter(x=>x.sembol!==s);
+  _lsPortfoyKaydet(p);
+  _portfoyRender(p);
+  fetch('/api/portfoy/'+SID+'/'+s,{method:'DELETE'}).catch(()=>{});
 }
 
 function portfoyGun(){
+  const local=_lsPortfoy();
+  _portfoyRender(local);
   fetch('/api/portfoy/'+SID)
     .then(r=>r.json())
-    .then(p=>_portfoyRender(p))
-    .catch(()=>{
-      const p=JSON.parse(localStorage.getItem('portfoy')||'[]');
-      _portfoyRender(p);
-    });
+    .then(srv=>{
+      if(srv&&srv.length>0){_lsPortfoyKaydet(srv);_portfoyRender(srv);}
+    })
+    .catch(()=>{});
 }
 
 function _alarmRender(a){
@@ -1126,6 +1124,9 @@ function _alarmRender(a){
   if('Notification' in window&&Notification.permission==='default') Notification.requestPermission();
 }
 
+function _lsAlarmlar(){return JSON.parse(localStorage.getItem('alarmlar')||'[]');}
+function _lsAlarmlarKaydet(a){localStorage.setItem('alarmlar',JSON.stringify(a));}
+
 function alarmEkle(){
   const s=(document.getElementById('a-sembol').value||'').toUpperCase().trim();
   const y=document.getElementById('a-yon').value;
@@ -1133,67 +1134,54 @@ function alarmEkle(){
   if(!s||!f){alert('Sembol ve fiyat zorunlu.');return;}
   document.getElementById('a-sembol').value='';
   document.getElementById('a-fiyat').value='';
+  const a=_lsAlarmlar();
+  a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
+  _lsAlarmlarKaydet(a);
+  _alarmRender(a);
   fetch('/api/alarmlar/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({sembol:s,yon:y,fiyat:f})})
-    .then(()=>alarmGun())
-    .catch(()=>{
-      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-      a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
-      localStorage.setItem('alarmlar',JSON.stringify(a));
-      alarmGun();
-    });
+    .then(r=>r.json())
+    .then(res=>{if(res.id){alarmGun();}})
+    .catch(()=>{});
 }
 
 function alarmSil(key){
   if(typeof key==='number'){
-    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'})
-      .then(()=>alarmGun())
-      .catch(()=>alarmGun());
+    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'}).catch(()=>{});
+    const a=_lsAlarmlar().filter(x=>x.id!==key);
+    _lsAlarmlarKaydet(a); _alarmRender(a);
   } else {
-    const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
+    const a=_lsAlarmlar();
     const idx=a.findIndex(x=>JSON.stringify(x)===key);
     if(idx>=0) a.splice(idx,1);
-    localStorage.setItem('alarmlar',JSON.stringify(a));
-    alarmGun();
+    _lsAlarmlarKaydet(a); _alarmRender(a);
   }
+  alarmGun();
 }
 
 function alarmKontrol(){
-  fetch('/api/alarmlar/'+SID)
-    .then(r=>r.json())
-    .then(a=>{
-      a.forEach(alarm=>{
-        if(alarm.tetiklendi){
-          const g=fiyatlar[alarm.sembol];
-          if(g!==undefined && 'Notification' in window && Notification.permission==='granted')
-            new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
-        }
-      });
-    })
-    .catch(()=>{
-      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-      let ch=false;
-      a.forEach((alarm,i)=>{
-        if(alarm.tetiklendi) return;
-        const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
-        const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
-        if(hit){a[i].tetiklendi=true;ch=true;
-          if('Notification' in window&&Notification.permission==='granted')
-            new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
-        }
-      });
-      if(ch){localStorage.setItem('alarmlar',JSON.stringify(a));alarmGun();}
-    });
+  const a=_lsAlarmlar(); let ch=false;
+  a.forEach((alarm,i)=>{
+    if(alarm.tetiklendi) return;
+    const g=fiyatlar[alarm.sembol]; if(g===undefined) return;
+    const hit=alarm.yon==='above'?g>=alarm.fiyat:g<=alarm.fiyat;
+    if(hit){a[i].tetiklendi=true;ch=true;
+      if('Notification' in window&&Notification.permission==='granted')
+        new Notification('Fiyat Alarmi',{body:alarm.sembol+' -> '+g.toFixed(2)+' TL'});
+    }
+  });
+  if(ch){_lsAlarmlarKaydet(a); _alarmRender(a);}
 }
 
 function alarmGun(){
+  const local=_lsAlarmlar();
+  _alarmRender(local);
   fetch('/api/alarmlar/'+SID)
     .then(r=>r.json())
-    .then(a=>_alarmRender(a))
-    .catch(()=>{
-      const a=JSON.parse(localStorage.getItem('alarmlar')||'[]');
-      _alarmRender(a);
-    });
+    .then(srv=>{
+      if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarmRender(srv);}
+    })
+    .catch(()=>{});
 }
 
 function syncKopyala(){
