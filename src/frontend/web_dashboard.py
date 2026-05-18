@@ -178,6 +178,36 @@ def sinyalleri_db_kaydet(sinyaller):
     finally:
         conn.close()
 
+def track_record_db_ekle(sinyaller):
+    """AL/SAT sinyallerini lidya_track_record'a Bekliyor olarak ekler (24 saatte bir tekrar)."""
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            for s in sinyaller:
+                if s.get('karar') not in ('AL', 'SAT'):
+                    continue
+                cur.execute("""
+                    SELECT id FROM lidya_track_record
+                    WHERE sembol=%s AND karar=%s AND sonuc='Bekliyor'
+                    AND zaman > NOW() - INTERVAL '24 hours'
+                    LIMIT 1
+                """, (s['sembol'], s['karar']))
+                if cur.fetchone():
+                    continue
+                cur.execute("""
+                    INSERT INTO lidya_track_record
+                        (sembol, karar, fiyat_giris, hedef, stop, sonuc)
+                    VALUES (%s,%s,%s,%s,%s,'Bekliyor')
+                """, (s['sembol'], s['karar'],
+                      s.get('fiyat'), s.get('hedef'), s.get('stop')))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Track record ekleme hatasi: {e}")
+    finally:
+        conn.close()
+
 def track_record_db_oku():
     conn = db_baglan()
     if conn is None:
@@ -498,6 +528,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .drawer-hdr{padding:13px 14px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--sf);}
 .drawer-kapat{background:none;border:none;color:var(--mu);font-size:22px;cursor:pointer;line-height:1;}
 .pf-grafik-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.ind-bar{display:flex;gap:5px;flex-wrap:wrap;padding:8px 0 10px;border-bottom:1px solid var(--bd);margin-bottom:10px;align-items:center;}
+.ind-btn{padding:3px 11px;border-radius:5px;border:1px solid var(--bd);background:none;color:var(--mu);font-size:11px;cursor:pointer;transition:all .18s;}
+.ind-btn:hover{border-color:var(--ac);color:var(--tx);}
+.ind-btn.active{background:rgba(167,139,250,.14);border-color:var(--ac);color:var(--ac);}
+.ind-sep{width:1px;height:16px;background:var(--bd);margin:0 3px;}
+.cizim-aktif{background:rgba(167,139,250,.28)!important;border-color:var(--ac)!important;color:var(--ac)!important;}
 @media(max-width:640px){
   .mob-menu-btn{display:flex!important;align-items:center;justify-content:center;}
   .tnav{display:none!important;}
@@ -610,9 +646,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="pb" onclick="periodSec(180,this)">6A</button>
       <button class="pb" onclick="periodSec(252,this)">1Y</button>
     </div>
-    <div id="grafik-alan" style="height:360px"></div>
-    <div id="hacim-alan" style="height:100px;margin-top:2px"></div>
-    <div id="rsi-alan" style="height:100px;margin-top:2px"></div>
+    <div class="ind-bar">
+      <button class="ind-btn" id="ind-ma200" onclick="indToggle('ma200',this)">MA200</button>
+      <button class="ind-btn" id="ind-bb" onclick="indToggle('bb',this)">Bollinger</button>
+      <button class="ind-btn" id="ind-macd" onclick="indToggle('macd',this)">MACD</button>
+      <button class="ind-btn" id="ind-stoch" onclick="indToggle('stoch',this)">Stoch</button>
+      <button class="ind-btn" id="ind-pivotlar" onclick="indToggle('pivotlar',this)">S/R</button>
+      <button class="ind-btn active" id="ind-sinyaller" onclick="indToggle('sinyaller',this)">Sinyaller</button>
+      <div class="ind-sep"></div>
+      <button class="ind-btn" id="btn-h-isin" onclick="aracSec('h-isin',this)" title="Yatay ışın — destek/direnç çizgisi">— H. Işın</button>
+      <button class="ind-btn" id="btn-v-isin" onclick="aracSec('v-isin',this)" title="Dikey ışın — tarih çizgisi">| V. Işın</button>
+      <button class="ind-btn" onclick="isinTemizle()" title="Tüm çizilen ışınları temizle" style="color:var(--re);border-color:rgba(239,68,68,.3)">✕ Temizle</button>
+      <div class="ind-sep"></div>
+      <button class="ind-btn" id="btn-cizim" onclick="cizimToggle(this)" title="Serbest çizim (trend çizgisi, dikdörtgen, daire)">✏ Serbest</button>
+    </div>
+    <div id="grafik-alan" style="height:370px"></div>
+    <div id="hacim-alan" style="height:85px;margin-top:2px"></div>
+    <div id="rsi-alan" style="height:85px;margin-top:2px"></div>
+    <div id="macd-alan" style="display:none;height:85px;margin-top:2px"></div>
+    <div id="stoch-alan" style="display:none;height:85px;margin-top:2px"></div>
   </div>
 </div>
 </div>
@@ -746,7 +798,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script>
 const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
-let grafikVerisi={}, trackData=null, period=90, fiyatlar={};
+let grafikVerisi={}, trackData=null, period=90, fiyatlar={}, sinyalVerisi=[];
+let indAktif={ma200:false,bb:false,macd:false,stoch:false,pivotlar:false,sinyaller:true};
+let cizimModu=false, aktifArac=null, isinlar=[];
 
 function getSid(){
   let sid=localStorage.getItem('lidya_sid');
@@ -796,7 +850,8 @@ function veriCek(){
   fetch('/api/veri').then(r=>r.json()).then(data=>{
     grafikVerisi=data.grafik_verisi||{};
     trackData=data.track_record;
-    (data.sinyaller||[]).forEach(s=>{fiyatlar[s.sembol.replace('.IS','')]=s.fiyat;});
+    sinyalVerisi=data.sinyaller||[];
+    sinyalVerisi.forEach(s=>{fiyatlar[s.sembol.replace('.IS','')]=s.fiyat;});
     sayfaGun(data);
     alarmKontrol();
   }).catch(e=>console.log('Hata:',e));
@@ -891,6 +946,115 @@ function periodSec(g,btn){
   grafikGuncelle();
 }
 
+function indToggle(id,btn){
+  indAktif[id]=!indAktif[id];
+  btn.classList.toggle('active');
+  const ma=document.getElementById('macd-alan'), sa=document.getElementById('stoch-alan');
+  if(ma) ma.style.display=indAktif.macd?'':'none';
+  if(sa) sa.style.display=indAktif.stoch?'':'none';
+  grafikGuncelle();
+}
+
+function cizimToggle(btn){
+  cizimModu=!cizimModu;
+  btn.classList.toggle('cizim-aktif');
+  btn.textContent=cizimModu?'✏ Serbest ON':'✏ Serbest';
+  if(cizimModu) _aracKapat();
+  grafikGuncelle();
+}
+
+function _aracKapat(){
+  aktifArac=null;
+  ['btn-h-isin','btn-v-isin'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(b) b.classList.remove('cizim-aktif');
+  });
+  const g=document.getElementById('grafik-alan');
+  if(g) g.style.cursor='';
+}
+
+function aracSec(arac,btn){
+  if(aktifArac===arac){_aracKapat();return;}
+  aktifArac=arac;
+  ['btn-h-isin','btn-v-isin'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(b) b.classList.remove('cizim-aktif');
+  });
+  btn.classList.add('cizim-aktif');
+  // Serbest çizim modunu kapat
+  if(cizimModu){
+    cizimModu=false;
+    const cb=document.getElementById('btn-cizim');
+    if(cb){cb.classList.remove('cizim-aktif');cb.textContent='✏ Serbest';}
+  }
+  const g=document.getElementById('grafik-alan');
+  if(g) g.style.cursor='crosshair';
+  grafikGuncelle();
+}
+
+function isinTemizle(){
+  isinlar=[];
+  grafikGuncelle();
+}
+
+function grafikEventleriAktar(){
+  const el=document.getElementById('grafik-alan');
+  if(!el||typeof el.removeAllListeners!=='function') return;
+  el.removeAllListeners('plotly_click');
+  el.on('plotly_click',function(data){
+    if(!aktifArac||!data||!data.points||!data.points.length) return;
+    const pt=data.points[0];
+    const x=pt.x;
+    const y=pt.y!=null?pt.y:(pt.close??pt.high??pt.low??pt.open);
+    if(y==null) return;
+    if(aktifArac==='h-isin'){
+      const fiyat=parseFloat(parseFloat(y).toFixed(2));
+      isinlar.push({
+        type:'line',xref:'paper',yref:'y',
+        x0:0,x1:1,y0:fiyat,y1:fiyat,
+        line:{color:'#a78bfa',width:1.5},
+        _lbl:fiyat.toFixed(2)+' TL',_tip:'h'
+      });
+    } else if(aktifArac==='v-isin'){
+      isinlar.push({
+        type:'line',xref:'x',yref:'paper',
+        x0:x,x1:x,y0:0,y1:1,
+        line:{color:'#f59e0b',width:1.5,dash:'dash'},
+        _lbl:String(x).slice(0,10),_tip:'v'
+      });
+    }
+    grafikGuncelle();
+  });
+}
+
+function _maHesapla(arr,p){
+  return arr.map((v,i)=>{
+    if(i<p-1) return null;
+    let s=0,c=0;
+    for(let j=i-p+1;j<=i;j++){if(arr[j]!=null){s+=arr[j];c++;}}
+    return c===p?parseFloat((s/p).toFixed(2)):null;
+  });
+}
+
+function _pivotHesapla(hi,lo,tar,bak=8){
+  const n=hi.length, res=[];
+  const cur=lo[n-1]||0;
+  const seen=new Set();
+  for(let i=bak;i<n-bak;i++){
+    let isH=true,isL=true;
+    for(let j=i-bak;j<=i+bak;j++){
+      if(j===i) continue;
+      if(hi[j]>=hi[i]) isH=false;
+      if(lo[j]<=lo[i]) isL=false;
+    }
+    if(isH){const v=Math.round(hi[i]*100)/100;if(!seen.has('R'+v)){res.push({f:v,t:'R',x:tar[i]});seen.add('R'+v);}}
+    if(isL){const v=Math.round(lo[i]*100)/100;if(!seen.has('S'+v)){res.push({f:v,t:'S',x:tar[i]});seen.add('S'+v);}}
+  }
+  const direnc=res.filter(p=>p.t==='R'&&p.f>cur).sort((a,b)=>a.f-b.f).slice(0,3);
+  const destek=res.filter(p=>p.t==='S'&&p.f<cur*1.03).sort((a,b)=>b.f-a.f).slice(0,3);
+  return [...direnc,...destek];
+}
+
 function grafikGuncelle(){
   const el=document.getElementById('hisse-sec');
   if(!el) return;
@@ -902,24 +1066,105 @@ function grafikGuncelle(){
   const m20=sl(veri.ma20),m50=sl(veri.ma50),vol=sl(veri.volume),rsi=sl(veri.rsi);
   const BL={paper_bgcolor:CBG,plot_bgcolor:CBG,font:{color:CFN,size:10},margin:{t:6,r:10,b:26,l:60}};
 
-  Plotly.newPlot('grafik-alan',[
+  // Ana grafik trace'leri
+  const traces=[
     {type:'candlestick',x:tar,open:op,high:hi,low:lo,close:cl,name:hisse.replace('.IS',''),
      increasing:{line:{color:'#22c55e',width:1},fillcolor:'rgba(34,197,94,.18)'},
      decreasing:{line:{color:'#ef4444',width:1},fillcolor:'rgba(239,68,68,.18)'}},
     {type:'scatter',x:tar,y:m20,name:'MA20',line:{color:'#f59e0b',width:1.5},opacity:.9},
     {type:'scatter',x:tar,y:m50,name:'MA50',line:{color:'#8b5cf6',width:1.5},opacity:.9}
-  ],{...BL,xaxis:{gridcolor:CGR,rangeslider:{visible:false},type:'date'},
-     yaxis:{gridcolor:CGR,ticksuffix:' TL'},
-     legend:{bgcolor:CBG+'aa',font:{size:10}},showlegend:true},
-  {responsive:true,displayModeBar:false});
+  ];
 
+  // MA200
+  if(indAktif.ma200&&veri.ma200){
+    traces.push({type:'scatter',x:tar,y:sl(veri.ma200),name:'MA200',
+      line:{color:'#ec4899',width:1.5,dash:'dash'},opacity:.85});
+  }
+
+  // Bollinger Bands
+  if(indAktif.bb&&veri.bb_ust){
+    const bu=sl(veri.bb_ust),ba=sl(veri.bb_alt);
+    traces.push({type:'scatter',x:tar,y:bu,name:'BB Üst',
+      line:{color:'rgba(99,102,241,.55)',width:1,dash:'dot'},showlegend:false});
+    traces.push({type:'scatter',x:tar,y:ba,name:'BB Alt',
+      line:{color:'rgba(99,102,241,.55)',width:1,dash:'dot'},
+      fill:'tonexty',fillcolor:'rgba(99,102,241,.05)',showlegend:false});
+  }
+
+  // Pivot / Destek-Direnç
+  const shapes=[],anns=[];
+  if(indAktif.pivotlar){
+    _pivotHesapla(hi,lo,tar).forEach(p=>{
+      const col=p.t==='R'?'rgba(239,68,68,.45)':'rgba(34,197,94,.45)';
+      shapes.push({type:'line',x0:tar[0],x1:tar[tar.length-1],y0:p.f,y1:p.f,
+        line:{color:col,width:1,dash:'dot'},xref:'x',yref:'y'});
+      anns.push({x:tar[tar.length-1],y:p.f,text:(p.t==='R'?'D ':'S ')+p.f.toFixed(2),
+        xanchor:'right',showarrow:false,
+        font:{size:9,color:p.t==='R'?'#ef4444':'#22c55e'},bgcolor:'transparent'});
+    });
+  }
+
+  // Sinyal işaretçileri
+  if(indAktif.sinyaller){
+    const sin=sinyalVerisi.find(s=>s.sembol===hisse);
+    if(sin&&sin.karar!=='BEKLE'){
+      const isAl=sin.karar==='AL';
+      const lx=tar[tar.length-1];
+      const ly=isAl?lo[lo.length-1]:hi[hi.length-1];
+      const offset=(hi[hi.length-1]-lo[lo.length-1])*0.6||1;
+      anns.push({x:lx,y:isAl?ly-offset:ly+offset,
+        text:sin.karar,showarrow:true,arrowhead:2,arrowsize:1.2,
+        arrowcolor:isAl?'#22c55e':'#ef4444',ax:0,ay:isAl?30:-30,
+        font:{size:11,color:isAl?'#22c55e':'#ef4444',family:'monospace'},
+        bgcolor:'transparent'});
+    }
+  }
+
+  // Kullanıcı çizilen ışınları birleştir
+  isinlar.forEach(r=>{
+    shapes.push({type:r.type,xref:r.xref,yref:r.yref,
+      x0:r.x0,x1:r.x1,y0:r.y0,y1:r.y1,line:r.line});
+    if(r._tip==='h'){
+      anns.push({x:0.995,y:r.y0,xref:'paper',yref:'y',
+        text:r._lbl,xanchor:'right',showarrow:false,
+        font:{size:9,color:'#a78bfa'},
+        bgcolor:'rgba(7,5,14,.75)',borderpad:2,bordercolor:'rgba(167,139,250,.3)',borderwidth:1});
+    } else if(r._tip==='v'){
+      anns.push({x:r.x0,y:1,xref:'x',yref:'paper',
+        text:r._lbl,xanchor:'left',yanchor:'top',showarrow:false,
+        font:{size:9,color:'#f59e0b'},
+        bgcolor:'rgba(7,5,14,.75)',borderpad:2,bordercolor:'rgba(245,158,11,.3)',borderwidth:1});
+    }
+  });
+
+  const cfg=cizimModu
+    ?{responsive:true,displayModeBar:true,
+      modeBarButtonsToAdd:['drawline','drawopenpath','drawrect','drawcircle','eraseshape'],
+      modeBarButtonsToRemove:['autoScale2d','lasso2d','select2d','toImage'],
+      displaylogo:false}
+    :{responsive:true,displayModeBar:false};
+
+  Plotly.newPlot('grafik-alan',traces,
+    {...BL,xaxis:{gridcolor:CGR,rangeslider:{visible:false},type:'date'},
+     yaxis:{gridcolor:CGR,ticksuffix:' TL'},
+     shapes:shapes,annotations:anns,
+     newshape:{line:{color:'#a78bfa',width:2}},
+     legend:{bgcolor:CBG+'aa',font:{size:10}},showlegend:true},
+  cfg);
+
+  // Hacim + MA20
   if(vol&&vol.length){
-    Plotly.newPlot('hacim-alan',[{type:'bar',x:tar,y:vol,name:'Hacim',
-      marker:{color:cl.map((c,i)=>c>=(op[i]||c)?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}}],
-    {...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,tickformat:'.2s'},showlegend:false},
+    const volMa=_maHesapla(vol,20);
+    Plotly.newPlot('hacim-alan',[
+      {type:'bar',x:tar,y:vol,name:'Hacim',
+        marker:{color:cl.map((c,i)=>c>=(op[i]||c)?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)')}},
+      {type:'scatter',x:tar,y:volMa,name:'Hac.MA20',
+        line:{color:'#f59e0b',width:1.5},opacity:.9}
+    ],{...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,tickformat:'.2s'},showlegend:false},
     {responsive:true,displayModeBar:false});
   }
 
+  // RSI
   if(rsi&&rsi.length){
     const x0=tar[0],x1=tar[tar.length-1];
     Plotly.newPlot('rsi-alan',[
@@ -929,6 +1174,33 @@ function grafikGuncelle(){
     ],{...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,range:[0,100],tickvals:[30,50,70]},showlegend:false},
     {responsive:true,displayModeBar:false});
   }
+
+  // MACD
+  if(indAktif.macd&&veri.macd){
+    const mc=sl(veri.macd),ms=sl(veri.macd_s),mh=sl(veri.macd_h);
+    Plotly.newPlot('macd-alan',[
+      {type:'bar',x:tar,y:mh,name:'Hist',
+        marker:{color:mh.map(v=>v>=0?'rgba(34,197,94,.5)':'rgba(239,68,68,.5)')}},
+      {type:'scatter',x:tar,y:mc,name:'MACD',line:{color:'#6366f1',width:1.5}},
+      {type:'scatter',x:tar,y:ms,name:'Signal',line:{color:'#f59e0b',width:1.5}}
+    ],{...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR},showlegend:false},
+    {responsive:true,displayModeBar:false});
+  }
+
+  // Stochastic
+  if(indAktif.stoch&&veri.stoch_k){
+    const sk=sl(veri.stoch_k),sd=sl(veri.stoch_d);
+    const x0=tar[0],x1=tar[tar.length-1];
+    Plotly.newPlot('stoch-alan',[
+      {type:'scatter',x:tar,y:sk,name:'%K',line:{color:'#6366f1',width:1.5}},
+      {type:'scatter',x:tar,y:sd,name:'%D',line:{color:'#f59e0b',width:1.5}},
+      {type:'scatter',x:[x0,x1],y:[80,80],line:{color:'rgba(239,68,68,.3)',width:1,dash:'dot'},showlegend:false},
+      {type:'scatter',x:[x0,x1],y:[20,20],line:{color:'rgba(34,197,94,.3)',width:1,dash:'dot'},showlegend:false}
+    ],{...BL,xaxis:{gridcolor:CGR,type:'date'},yaxis:{gridcolor:CGR,range:[0,100],tickvals:[20,50,80]},showlegend:false},
+    {responsive:true,displayModeBar:false});
+  }
+
+  grafikEventleriAktar();
 }
 
 function trTabGun(tr){
@@ -1613,17 +1885,62 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
 
 def grafik_verisi_hazirla(sembol, df):
     s = df.tail(252).copy()
+
+    def safe_list(series, dec=2):
+        return [None if pd.isna(v) else round(float(v), dec) for v in series]
+
     rsi_vals = ta.rsi(s['Close'], length=14)
+
+    # MA200 — hesapla (tum df'den, son 252 bar al)
+    try:
+        ma200_full = ta.sma(df['Close'], length=200)
+        ma200 = ma200_full.iloc[-252:]
+    except Exception:
+        ma200 = pd.Series([None]*len(s))
+
+    # Bollinger Bands (20,2)
+    try:
+        bb = ta.bbands(s['Close'], length=20)
+        bb_ust = safe_list(bb.iloc[:, 2])   # BBU
+        bb_alt = safe_list(bb.iloc[:, 0])   # BBL
+    except Exception:
+        bb_ust = bb_alt = [None]*len(s)
+
+    # MACD (12,26,9)
+    try:
+        macd_df = ta.macd(s['Close'])
+        macd_l = safe_list(macd_df.iloc[:, 0], 4)   # MACD line
+        macd_h = safe_list(macd_df.iloc[:, 1], 4)   # Histogram
+        macd_s = safe_list(macd_df.iloc[:, 2], 4)   # Signal
+    except Exception:
+        macd_l = macd_h = macd_s = [None]*len(s)
+
+    # Stochastic (14,3,3)
+    try:
+        stoch_df = ta.stoch(s['High'], s['Low'], s['Close'])
+        stoch_k = safe_list(stoch_df.iloc[:, 0])
+        stoch_d = safe_list(stoch_df.iloc[:, 1])
+    except Exception:
+        stoch_k = stoch_d = [None]*len(s)
+
     return {
         'tarihler': [str(t)[:10] for t in s.index],
-        'open'   : s['Open'].round(2).tolist(),
-        'high'   : s['High'].round(2).tolist(),
-        'low'    : s['Low'].round(2).tolist(),
-        'close'  : s['Close'].round(2).tolist(),
-        'ma20'   : s['MA20'].round(2).tolist(),
-        'ma50'   : s['MA50'].round(2).tolist(),
-        'volume' : s['Volume'].tolist(),
-        'rsi'    : rsi_vals.round(1).tolist(),
+        'open'    : s['Open'].round(2).tolist(),
+        'high'    : s['High'].round(2).tolist(),
+        'low'     : s['Low'].round(2).tolist(),
+        'close'   : s['Close'].round(2).tolist(),
+        'ma20'    : safe_list(s['MA20']),
+        'ma50'    : safe_list(s['MA50']),
+        'ma200'   : safe_list(ma200),
+        'bb_ust'  : bb_ust,
+        'bb_alt'  : bb_alt,
+        'macd'    : macd_l,
+        'macd_h'  : macd_h,
+        'macd_s'  : macd_s,
+        'stoch_k' : stoch_k,
+        'stoch_d' : stoch_d,
+        'volume'  : s['Volume'].tolist(),
+        'rsi'     : safe_list(rsi_vals, 1),
     }
 
 def track_record_oku():
@@ -1728,6 +2045,7 @@ def sistem_baslat():
             SISTEM_VERISI['son_guncelleme'] = datetime.now().strftime("%H:%M:%S")
 
             sinyalleri_db_kaydet(sinyaller)
+            track_record_db_ekle(sinyaller)
             alarmlar_db_kontrol(sinyaller)
             sinyallerden_track_record_guncelle()
 
