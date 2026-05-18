@@ -777,8 +777,7 @@ function tabAc(id,btn){
 function tabMob(id,btn){
   document.querySelectorAll('.bni').forEach(e=>e.classList.remove('active'));
   btn.classList.add('active');
-  const topBtn=document.querySelector('.tb[onclick*="\''+id+'\'"]');
-  tabAc(id, topBtn||null);
+  tabAc(id, null);
 }
 
 function drawerAc(){
