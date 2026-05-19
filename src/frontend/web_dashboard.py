@@ -2117,6 +2117,37 @@ function finansallarYukle(sembol){
 function sirketKapat(){document.getElementById('sirket-modal').style.display='none';}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')sirketKapat();});
 
+// ── Borsa tatil takvimi ───────────────────────────────
+const BORSA_TAM_KAPALI=new Set([
+  '2025-03-30','2025-03-31','2025-04-01',
+  '2025-06-06','2025-06-07','2025-06-08','2025-06-09',
+  '2026-03-19','2026-03-20','2026-03-21',
+  '2026-05-26','2026-05-27','2026-05-28','2026-05-29',
+]);
+const BORSA_ARIFE=new Set([
+  '2025-03-29','2025-06-05','2026-03-18','2026-05-25',
+]);
+
+function borsaAcikMi(tr){
+  const gun=tr.getDay();
+  if(gun===0||gun===6) return false;
+  const ay=tr.getMonth()+1, gun2=tr.getDate(), yil=tr.getFullYear();
+  const dak=tr.getHours()*60+tr.getMinutes();
+  const pad=n=>String(n).padStart(2,'0');
+  const tarihStr=yil+'-'+pad(ay)+'-'+pad(gun2);
+  // Sabit ulusal tatiller
+  const sabit=[[1,1],[4,23],[5,1],[5,19],[7,15],[8,30],[10,29]];
+  if(sabit.some(([m,d])=>m===ay&&d===gun2)) return false;
+  // 28 Ekim arife — 12:30'dan sonra kapalı
+  if(ay===10&&gun2===28&&dak>=750) return false;
+  // Tam kapalı dini bayramlar
+  if(BORSA_TAM_KAPALI.has(tarihStr)) return false;
+  // Arife günleri — 12:30'dan sonra kapalı
+  if(BORSA_ARIFE.has(tarihStr)&&dak>=750) return false;
+  // Normal seans 09:40 – 18:00
+  return dak>=580&&dak<1080;
+}
+
 function saatGuncelle(){
   try{
     const tr=new Date(new Date().toLocaleString('en-US',{timeZone:'Europe/Istanbul'}));
@@ -2124,8 +2155,7 @@ function saatGuncelle(){
     const saat=p(tr.getHours())+':'+p(tr.getMinutes())+':'+p(tr.getSeconds());
     const sg=document.getElementById('son-guncelleme');
     if(sg) sg.textContent=saat;
-    const gun=tr.getDay(), dak=tr.getHours()*60+tr.getMinutes();
-    const acik=gun>=1&&gun<=5&&dak>=580&&dak<1080;
+    const acik=borsaAcikMi(tr);
     const d=document.getElementById('borsa-durum');
     if(d&&!d.textContent.includes('YUKLEN')){
       const yeni=acik?'BORSA ACIK':'BORSA KAPALI';
@@ -2144,11 +2174,48 @@ alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); veriCe
 # ── BACKEND ────────────────────────────────────────────
 
 def borsa_acik_mi():
-    from datetime import time as dtime
-    now = datetime.now()
-    if now.weekday() >= 5:   # Cumartesi=5, Pazar=6
+    from datetime import date, time as dtime
+    now   = datetime.now()
+    bugun = now.date()
+
+    if now.weekday() >= 5:          # Cumartesi / Pazar
         return False
-    return dtime(10, 0) <= now.time() <= dtime(18, 10)
+
+    # ── Sabit ulusal tatiller (ay, gün) ────────────────
+    SABIT = {(1,1),(4,23),(5,1),(5,19),(7,15),(8,30),(10,29)}
+    if (bugun.month, bugun.day) in SABIT:
+        return False
+
+    # ── 28 Ekim arife — öğleden sonra 12:30'dan itibaren kapalı ──
+    if bugun.month == 10 and bugun.day == 28 and now.time() >= dtime(12, 30):
+        return False
+
+    # ── Tam kapalı dini bayram günleri ─────────────────
+    TAM_KAPALI = {
+        # Ramazan Bayramı 2025 (30 Mar – 1 Nis)
+        date(2025,3,30), date(2025,3,31), date(2025,4,1),
+        # Kurban Bayramı 2025 (6–9 Haz)
+        date(2025,6,6), date(2025,6,7), date(2025,6,8), date(2025,6,9),
+        # Ramazan Bayramı 2026 (19–21 Mar)
+        date(2026,3,19), date(2026,3,20), date(2026,3,21),
+        # Kurban Bayramı 2026 (26–29 May)
+        date(2026,5,26), date(2026,5,27), date(2026,5,28), date(2026,5,29),
+    }
+    if bugun in TAM_KAPALI:
+        return False
+
+    # ── Arife günleri — öğleden sonra 12:30'dan itibaren kapalı ──
+    ARIFE = {
+        date(2025,3,29),   # Ramazan arife 2025
+        date(2025,6,5),    # Kurban arife 2025
+        date(2026,3,18),   # Ramazan arife 2026
+        date(2026,5,25),   # Kurban arife 2026
+    }
+    if bugun in ARIFE and now.time() >= dtime(12, 30):
+        return False
+
+    # ── Normal seans: 09:40 – 18:00 ────────────────────
+    return dtime(9, 40) <= now.time() <= dtime(18, 0)
 
 def piyasa_bilgisi_cek():
     try:
