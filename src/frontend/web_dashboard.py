@@ -2781,17 +2781,14 @@ def json_temizle(data):
     else:
         return data
 
-_egitim_basladi = False
 _finans_cache = {}   # sembol -> (datetime, data)
+
+# Uygulama başlar başlamaz arka plan thread'ini başlat (ziyaretçi beklenmez)
+threading.Thread(target=sistem_baslat, daemon=True, name='sinyal-motoru').start()
+print("Sinyal motoru başlatıldı.")
 
 @app.route('/api/veri')
 def api_veri():
-    global _egitim_basladi
-    if not _egitim_basladi:
-        _egitim_basladi = True
-        threading.Thread(target=sistem_baslat, daemon=True).start()
-        print("İlk istek alındı — model eğitimi başlatıldı.")
-
     tr_data = track_record_db_oku() or track_record_oku()
     data = {
         'hazir'         : SISTEM_VERISI['hazir'],
