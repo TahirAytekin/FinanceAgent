@@ -430,6 +430,7 @@ HTML = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="LIDYA, BIST hisseleri icin teknik gosterge ve haber duyarlılığı verilerini şeffaf şekilde sunan deneysel bir bilgi panelidir. Yatırım tavsiyesi degildir.">
 <title>LIDYA — Borsa Analiz</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
@@ -449,8 +450,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tb:hover{color:var(--tx);}
 .tb.active{color:var(--ac);border-bottom-color:var(--ac);}
 .tp{display:none;} .tp.active{display:block;}
-.lay{display:flex;min-height:calc(100vh - 88px);}
-.sb{width:228px;min-width:228px;background:var(--sf);overflow-y:auto;height:calc(100vh - 88px);position:sticky;top:88px;flex-shrink:0;}
+.uyari{position:sticky;top:88px;z-index:90;background:#f59e0b14;border-bottom:1px solid #f59e0b28;color:var(--ye);font-size:11px;line-height:16px;padding:7px 20px;text-align:center;}
+.uyari b{color:var(--tx);}
+.lay{display:flex;min-height:calc(100vh - 118px);}
+.sb{width:228px;min-width:228px;background:var(--sf);overflow-y:auto;height:calc(100vh - 118px);position:sticky;top:118px;flex-shrink:0;}
 .sb-l{border-right:1px solid var(--bd);}
 .sb-r{border-left:1px solid var(--bd);}
 .sb::-webkit-scrollbar{width:3px;}.sb::-webkit-scrollbar-thumb{background:var(--bd);}
@@ -652,6 +655,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="tb" onclick="tabAc('alarmlar',this)">Alarmlar</button>
 </nav>
 
+<div class="uyari">⚠ Bu platform <b>deneyseldir</b>. Gösterilen veriler <b>yatırım tavsiyesi değildir</b> — model çıktılarının geçmiş gerçek başarı oranını <b>Track Record</b> sekmesinde görebilirsiniz.</div>
+
 <div class="lay">
 
 <!-- LEFT: Haberler -->
@@ -675,7 +680,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="sc">
       <div class="sh"><div class="sl">Aktif Sinyaller</div></div>
       <div class="sv" id="sinyal-sayisi">—</div>
-      <div class="ss" id="sinyal-ozet">AL / SAT / BEKLE</div>
+      <div class="ss" id="sinyal-ozet">Pozitif / Negatif / Nötr</div>
     </div>
     <div class="sc">
       <div class="sh"><div class="sl">BIST100</div></div>
@@ -686,6 +691,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="sh"><div class="sl">Başarı Oranı</div></div>
       <div class="sv" id="basari-deger">—</div>
       <div class="ss" id="basari-sub">Tamamlanan: —</div>
+      <div class="ss" style="opacity:.7">3 sınıflı rastgele tahmin: ~%33</div>
     </div>
   </div>
   <div class="card">
@@ -754,7 +760,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="trg">
     <div class="trs"><div class="trl">Toplam Sinyal</div><div class="trv" id="tr-toplam">—</div></div>
     <div class="trs"><div class="trl">Tamamlanan</div><div class="trv" id="tr-tamamlanan">—</div></div>
-    <div class="trs"><div class="trl">Başarı Oranı</div><div class="trv" id="tr-basari">—</div></div>
+    <div class="trs"><div class="trl">Başarı Oranı</div><div class="trv" id="tr-basari">—</div><div style="font-size:9px;color:var(--mu);margin-top:2px">3 sınıflı rastgele: ~%33</div></div>
     <div class="trs"><div class="trl">Ort. Kar/Zarar</div><div class="trv" id="tr-ort-kar">—</div></div>
   </div>
   <div class="card">
@@ -852,8 +858,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <option value="below">Fiyat Altına Düşünce ↓</option>
         <option value="rsi_ob">RSI Aşırı Alım (RSI &gt; 70)</option>
         <option value="rsi_os">RSI Aşırı Satım (RSI &lt; 30)</option>
-        <option value="sinyal_al">AL Sinyali Gelince</option>
-        <option value="sinyal_sat">SAT Sinyali Gelince</option>
+        <option value="sinyal_al">Gösterge Pozitife Dönünce</option>
+        <option value="sinyal_sat">Gösterge Negatife Dönünce</option>
       </select>
       <input class="pi" id="al2-fiyat" placeholder="Hedef Fiyat ₺" type="number" style="max-width:135px">
       <button class="ba" onclick="alarm2Ekle()">+ Alarm</button>
@@ -940,6 +946,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <script>
 const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
+const KARAR_ETIKET={AL:'POZİTİF',SAT:'NEGATİF',BEKLE:'NÖTR'};
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={}, sinyalVerisi=[];
 let indAktif={ma200:false,bb:false,macd:false,stoch:false,pivotlar:false,sinyaller:true};
 let cizimModu=false, aktifArac=null, isinlar=[];
@@ -1019,7 +1026,7 @@ function sayfaGun(data){
   const sn=data.sinyaller||[];
   const al=sn.filter(s=>s.karar==='AL').length, sat=sn.filter(s=>s.karar==='SAT').length, bk=sn.filter(s=>s.karar==='BEKLE').length;
   document.getElementById('sinyal-sayisi').textContent=sn.length;
-  document.getElementById('sinyal-ozet').innerHTML='<span class="gr">'+al+' AL</span> / <span class="re">'+sat+' SAT</span> / <span class="ye">'+bk+' BEKLE</span>';
+  document.getElementById('sinyal-ozet').innerHTML='<span class="gr">'+al+' Pozitif</span> / <span class="re">'+sat+' Negatif</span> / <span class="ye">'+bk+' Nötr</span>';
 
   if(data.piyasa&&data.piyasa.bist_son){
     const p=data.piyasa, gr=p.bist_getiri_1ay>=0?'gr':'re';
@@ -1057,7 +1064,7 @@ function sektorGun(sn){
   Object.entries(s).forEach(([sek,b])=>{
     const ort=b.d.length?b.d.reduce((a,v)=>a+v,0)/b.d.length:0;
     const r=ort>0?'gr':ort<0?'re':'ye';
-    const du=b.al>b.sat?'AL agirlikli':b.sat>b.al?'SAT agirlikli':'Karisik';
+    const du=b.al>b.sat?'Pozitif agirlikli':b.sat>b.al?'Negatif agirlikli':'Karisik';
     h+='<div class="ek"><div class="enm">'+sek+'</div><div class="ev '+r+'">'+(ort>=0?'+':'')+ort.toFixed(1)+'%</div><div class="ed">'+du+'</div></div>';
   });
   document.getElementById('sektor-grid').innerHTML=h||'<div class="es">Yukleniyor...</div>';
@@ -1065,7 +1072,7 @@ function sektorGun(sn){
 
 function tabloGun(sn){
   if(!sn||!sn.length){document.getElementById('sinyal-tablo-alani').innerHTML='<div class="es">Modeller egitiliyor...</div>';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Degisim</th><th>RSI</th><th>Karar</th><th>Guven</th><th>Hedef</th><th>Stop</th></tr></thead><tbody>';
+  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Degisim</th><th>RSI</th><th>Gosterge</th><th>Guven</th><th>Ref. Direnc</th><th>Ref. Destek</th></tr></thead><tbody>';
   sn.forEach(s=>{
     const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
@@ -1075,7 +1082,7 @@ function tabloGun(sn){
       '<td>'+Number(s.fiyat).toFixed(2)+' TL</td>'+
       '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
       '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
-      '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
+      '<td><span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></td>'+
       '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
       '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' TL':'-')+'</td></tr>';
@@ -1257,7 +1264,7 @@ function grafikGuncelle(){
       const ly=isAl?lo[lo.length-1]:hi[hi.length-1];
       const offset=(hi[hi.length-1]-lo[lo.length-1])*0.6||1;
       anns.push({x:lx,y:isAl?ly-offset:ly+offset,
-        text:sin.karar,showarrow:true,arrowhead:2,arrowsize:1.2,
+        text:KARAR_ETIKET[sin.karar],showarrow:true,arrowhead:2,arrowsize:1.2,
         arrowcolor:isAl?'#22c55e':'#ef4444',ax:0,ay:isAl?30:-30,
         font:{size:11,color:isAl?'#22c55e':'#ef4444',family:'monospace'},
         bgcolor:'transparent'});
@@ -1360,7 +1367,7 @@ function trTabGun(tr){
   if(!tr.son_sinyaller||!tr.son_sinyaller.length){
     document.getElementById('track-record-alani').innerHTML='<div class="es">Henuz tamamlanan sinyal yok.</div>';return;
   }
-  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Karar</th><th>Giris</th><th>Hedef</th><th>Stop</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
+  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Gosterge</th><th>Giris</th><th>Ref. Direnc</th><th>Ref. Destek</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
   tr.son_sinyaller.forEach(s=>{
     const kzv=s.kar_zarar?parseFloat(s.kar_zarar):null;
     const sr=s.sonuc==='KAZANDI'?'gr':s.sonuc==='KAYBETTI'?'re':'ye';
@@ -1369,7 +1376,7 @@ function trTabGun(tr){
     const kzs=kzv!=null?'<span class="'+(kzv>=0?'gr':'re')+'">%'+(kzv>0?'+':'')+kzv.toFixed(1)+'</span>':'-';
     h+='<tr class="'+rc+'"><td style="font-size:10px;white-space:nowrap">'+(s.zaman||'-')+'</td>'+
       '<td style="font-weight:700">'+(s.sembol||'').replace('.IS','')+'</td>'+
-      '<td><span class="pill '+kc+'">'+s.karar+'</span></td>'+
+      '<td><span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></td>'+
       '<td>'+(s.fiyat_giris?parseFloat(s.fiyat_giris).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="gr">'+(s.hedef?parseFloat(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?parseFloat(s.stop).toFixed(2)+' TL':'-')+'</td>'+
@@ -1593,8 +1600,8 @@ function alarmKontrol(){
       if('Notification' in window&&Notification.permission==='granted'){
         const msg=alarm.yon==='rsi_ob'?alarm.sembol+' RSI asiri alim bolgesine girdi!':
           alarm.yon==='rsi_os'?alarm.sembol+' RSI asiri satim bolgesinde!':
-          alarm.yon==='sinyal_al'?alarm.sembol+' AL sinyali verdi!':
-          alarm.yon==='sinyal_sat'?alarm.sembol+' SAT sinyali verdi!':
+          alarm.yon==='sinyal_al'?alarm.sembol+' göstergesi pozitife döndü (deneysel, yatırım tavsiyesi değildir).':
+          alarm.yon==='sinyal_sat'?alarm.sembol+' göstergesi negatife döndü (deneysel, yatırım tavsiyesi değildir).':
           alarm.sembol+' -> '+g.toFixed(2)+' TL ('+(alarm.yon==='above'?'yukseldi':'dustu')+')';
         new Notification('LIDYA Alarm',{body:msg});
       }
@@ -1689,7 +1696,7 @@ function takvimRender(){
 }
 
 // ── Alarm Merkezi ─────────────────────────────────────
-const ALARM_TUR_LBL={above:'Fiyat Üstü ↑',below:'Fiyat Altı ↓',rsi_ob:'RSI Aşırı Alım',rsi_os:'RSI Aşırı Satım',sinyal_al:'AL Sinyali',sinyal_sat:'SAT Sinyali'};
+const ALARM_TUR_LBL={above:'Fiyat Üstü ↑',below:'Fiyat Altı ↓',rsi_ob:'RSI Aşırı Alım',rsi_os:'RSI Aşırı Satım',sinyal_al:'Gösterge Pozitife Döndü',sinyal_sat:'Gösterge Negatife Döndü'};
 
 function alarmTurGun(){
   const tur=document.getElementById('al2-tur'); if(!tur) return;
@@ -1766,8 +1773,8 @@ function _alarm2Render(a){
     if(x.yon==='above'||x.yon==='below') kosul=x.fiyat?parseFloat(x.fiyat).toFixed(2)+' TL':'-';
     else if(x.yon==='rsi_ob') kosul='RSI > 70';
     else if(x.yon==='rsi_os') kosul='RSI < 30';
-    else if(x.yon==='sinyal_al') kosul='Karar = AL';
-    else if(x.yon==='sinyal_sat') kosul='Karar = SAT';
+    else if(x.yon==='sinyal_al') kosul='Gösterge = Pozitif';
+    else if(x.yon==='sinyal_sat') kosul='Gösterge = Negatif';
     h+='<tr><td style="font-weight:700">'+x.sembol+'</td>'+
       '<td style="font-size:10px;white-space:nowrap">'+(ALARM_TUR_LBL[x.yon]||x.yon)+'</td>'+
       '<td>'+kosul+'</td>'+
@@ -1822,12 +1829,12 @@ const IND_KARTLAR=[
   {id:'ik-vol',kat:'Hacim',kr:'#22c55e',isim:'Hacim Analizi',
    aciklama:'Güncel hacimin 20 günlük ortalamasına oranı. Fiyat hareketinin güvenilirliğini teyit eder.',
    hint:'Yüksek hacimli hareket daha güvenilir · Düşük hacimde yalancı kırılım riski'},
-  {id:'ik-atr',kat:'Risk / Stop',kr:'#f59e0b',isim:'ATR (Volatilite)',
-   aciklama:'Ortalama Gerçek Aralık. Günlük fiyat dalgalanmasını ölçer; stop ve hedef hesabında kullanılır.',
-   hint:'Stop önerisi: ATR × 1.5 · Hedef önerisi: ATR × 2.5 · Yüksek ATR = oynak piyasa'},
+  {id:'ik-atr',kat:'Volatilite',kr:'#f59e0b',isim:'ATR (Volatilite)',
+   aciklama:'Ortalama Gerçek Aralık. Günlük fiyat dalgalanmasını ölçer; referans direnç/destek seviyesi hesabında kullanılır.',
+   hint:'Referans direnç: ATR × 1.5 üstü · Referans destek: ATR × 2.5 altı · Yüksek ATR = oynak piyasa (bilgi amaçlıdır, emir değildir)'},
   {id:'ik-sr',kat:'Teknik Seviye',kr:'#a78bfa',isim:'Destek / Direnç',
-   aciklama:'Pivot noktaları ile hesaplanan kritik fiyat seviyeleri. Alım-satım kararlarını destekler.',
-   hint:'Desteğe yakın → potansiyel AL · Dirence yakın → temkinli ol, hacim bekle'},
+   aciklama:'Pivot noktaları ile hesaplanan, fiyatın geçmişte tepki verdiği seviyeler.',
+   hint:'Fiyat geçmişte bu seviyelerde yön değiştirmiş · tekrar edeceği garanti değildir'},
 ];
 
 function indKartlarOlustur(){
@@ -1981,7 +1988,7 @@ function sirketKartlariGun(sn){
     h+='<div class="sirket-kart" data-sembol="'+k+'" onclick="sirketAc(this.dataset.sembol)">'+
       '<div class="sk-logo" style="background:'+r+'22;border:1px solid '+r+'44;color:'+r+'">'+k.substring(0,2)+'</div>'+
       '<div class="sk-ad">'+k+'</div>'+
-      '<span class="pill '+kc+'">'+s.karar+'</span></div>';
+      '<span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></div>';
   });
   el.innerHTML=h;
 }
@@ -2010,7 +2017,7 @@ function sirketAc(sembol){
       '<div><div style="font-size:17px;font-weight:700;color:var(--tx)">'+d.ad+'</div>'+
       '<div style="font-size:11px;color:var(--mu);margin-top:2px">'+sembol+' — '+d.sektor+'</div></div></div>'+
       '<div style="display:flex;gap:8px;align-items:center">'+
-      (s?'<span class="pill '+kc+'">'+s.karar+'</span>':'')+
+      (s?'<span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span>':'')+
       '<button onclick="sirketKapat()" style="background:var(--sf);border:1px solid var(--bd);color:var(--mu);width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1">x</button>'+
       '</div></div>';
     h+='<div class="modal-sekmeler">'+
@@ -2028,8 +2035,8 @@ function sirketAc(sembol){
         '<span>Fiyat: <strong>'+Number(s.fiyat).toFixed(2)+' TL</strong></span>'+
         '<span class="'+dr+'">'+( s.degisim>=0?'+':'')+Number(s.degisim).toFixed(2)+'%</span>'+
         '<span>RSI: <strong>'+Number(s.rsi).toFixed(1)+'</strong></span>'+
-        '<span class="gr">Hedef: <strong>'+Number(s.hedef).toFixed(2)+' TL</strong></span>'+
-        '<span class="re">Stop: <strong>'+Number(s.stop).toFixed(2)+' TL</strong></span>'+
+        '<span class="gr">Ref. Direnç: <strong>'+Number(s.hedef).toFixed(2)+' TL</strong></span>'+
+        '<span class="re">Ref. Destek: <strong>'+Number(s.stop).toFixed(2)+' TL</strong></span>'+
         '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span></div>';
     }
     h+='<div id="modal-ozet-k">'+ozet+'</div>';
