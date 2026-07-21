@@ -455,7 +455,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sb-r{border-left:1px solid var(--bd);}
 .sb::-webkit-scrollbar{width:3px;}.sb::-webkit-scrollbar-thumb{background:var(--bd);}
 .main{flex:1;min-width:0;}
-.sbt{font-size:11px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.08em;padding:11px 12px 7px;border-bottom:1px solid var(--bd);}
+.sbt{font-size:13px;font-weight:800;color:var(--tx);text-transform:uppercase;letter-spacing:.1em;padding:11px 12px 7px;border-bottom:1px solid var(--bd);text-shadow:0 1px 0 rgba(255,255,255,.2),0 2px 1px rgba(0,0,0,.5),0 3px 4px rgba(0,0,0,.55),0 0 14px rgba(167,139,250,.35);}
 .sbi{padding:8px 12px;border-bottom:1px solid rgba(46,42,72,.35);transition:background .15s;}
 .sbi:hover{background:var(--card);}
 .prow{display:flex;justify-content:space-between;align-items:center;}
