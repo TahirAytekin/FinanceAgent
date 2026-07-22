@@ -9,7 +9,7 @@ import pickle
 import zlib
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
@@ -32,6 +32,12 @@ try:
     _PYJWT_OK = True
 except ImportError:
     _PYJWT_OK = False
+try:
+    from src.data_ingestion.haber_analizi import google_news_rss as _google_news_rss
+    from src.data_ingestion.haber_analizi import yahoo_news_cek as _yahoo_news_cek
+    _HABER_ANALIZI_OK = True
+except Exception:
+    _HABER_ANALIZI_OK = False
 
 # ─── Ayarlar ───────────────────────────────────────────
 HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
@@ -800,6 +806,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="ind-sep"></div>
       <button class="ind-btn" id="btn-h-isin" onclick="aracSec('h-isin',this)" title="Yatay ışın — destek/direnç çizgisi">— H. Işın</button>
       <button class="ind-btn" id="btn-v-isin" onclick="aracSec('v-isin',this)" title="Dikey ışın — tarih çizgisi">| V. Işın</button>
+      <button class="ind-btn" id="btn-cetvel" onclick="aracSec('cetvel',this)" title="Cetvel — iki nokta arası % değişim ve mum sayısı">📏 Cetvel</button>
       <button class="ind-btn" onclick="isinTemizle()" title="Tüm çizilen ışınları temizle" style="color:var(--re);border-color:rgba(239,68,68,.3)">✕ Temizle</button>
       <div class="ind-sep"></div>
       <button class="ind-btn" id="btn-cizim" onclick="cizimToggle(this)" title="Serbest çizim (trend çizgisi, dikdörtgen, daire)">✏ Serbest</button>
@@ -883,15 +890,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div id="alarm-listesi"><div class="es">Henüz alarm yok.</div></div>
   </div>
-  <div class="card" id="sync-kart">
-    <div class="ctit">Cihazlar Arasi Sync</div>
-    <p style="font-size:12px;color:var(--mu);margin-bottom:10px">Asagidaki kodu baska cihaza yapistir, portfoy ve alarmlar oraya tasinir.</p>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <input class="pi" id="sync-kod" readonly style="flex:1;min-width:200px;font-size:11px;font-family:monospace">
-      <button class="ba" onclick="syncKopyala()">Kopyala</button>
-      <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="syncUygula()">Uygula</button>
-    </div>
-    <input class="pi" id="sync-giris" placeholder="Baska cihazin kodunu buraya yapistir..." style="width:100%;margin-top:8px;font-size:11px;font-family:monospace">
+  <div class="card" id="hesap-nudge">
+    <div class="ctit">Verilerinizi Kalıcı Yapın</div>
+    <p style="font-size:12px;color:var(--mu);margin-bottom:10px">Portföyünüzü ve alarmlarınızı cihazlar arası kalıcı hale getirmek için bir hesap oluşturun.</p>
+    <button class="ba" onclick="tabAc('hesap', null)">Hesap Oluştur / Giriş Yap</button>
   </div>
 </div>
 </div>
@@ -1049,7 +1051,7 @@ const KARAR_ETIKET={AL:'POZİTİF',SAT:'NEGATİF',BEKLE:'NÖTR'};
 const SUPABASE_URL='{{ supabase_url }}', SUPABASE_ANON_KEY='{{ supabase_anon_key }}';
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={}, sinyalVerisi=[];
 let indAktif={ma200:false,bb:false,macd:false,stoch:false,pivotlar:false,sinyaller:true};
-let cizimModu=false, aktifArac=null, isinlar=[];
+let cizimModu=false, aktifArac=null, isinlar=[], cetvelIlkNokta=null;
 
 function getSid(){
   let sid=localStorage.getItem('lidya_sid');
@@ -1127,16 +1129,16 @@ function hesapUIGuncelle(){
   const a=_authOku();
   const girisli=document.getElementById('hesap-cikis-yapilmis');
   const girissiz=document.getElementById('hesap-giris-yapilmamis');
-  const sync=document.getElementById('sync-kart');
+  const nudge=document.getElementById('hesap-nudge');
   if(a){
     if(girisli) girisli.style.display='';
     if(girissiz) girissiz.style.display='none';
-    if(sync) sync.style.display='none';
+    if(nudge) nudge.style.display='none';
     const e=document.getElementById('hesap-eposta'); if(e) e.textContent=a.email;
   }else{
     if(girisli) girisli.style.display='none';
     if(girissiz) girissiz.style.display='';
-    if(sync) sync.style.display='';
+    if(nudge) nudge.style.display='';
   }
 }
 
@@ -1205,7 +1207,7 @@ function tabAc(id,btn){
   });
   if(id==='grafik') grafikGuncelle();
   if(id==='trackrecord') perfCiz();
-  if(id==='portfoy'){portfoyGun();alarmGun();const sk=document.getElementById('sync-kod');if(sk) sk.value=SID;}
+  if(id==='portfoy'){portfoyGun();alarmGun();}
   if(id==='takvim') takvimYukle();
   if(id==='alarmlar'){alarm2Gun();bildirimDurumGun();alarmTurGun();}
   if(id==='hesap') hesapUIGuncelle();
@@ -1348,7 +1350,8 @@ function cizimToggle(btn){
 
 function _aracKapat(){
   aktifArac=null;
-  ['btn-h-isin','btn-v-isin'].forEach(id=>{
+  cetvelIlkNokta=null;
+  ['btn-h-isin','btn-v-isin','btn-cetvel'].forEach(id=>{
     const b=document.getElementById(id);
     if(b) b.classList.remove('cizim-aktif');
   });
@@ -1359,7 +1362,8 @@ function _aracKapat(){
 function aracSec(arac,btn){
   if(aktifArac===arac){_aracKapat();return;}
   aktifArac=arac;
-  ['btn-h-isin','btn-v-isin'].forEach(id=>{
+  cetvelIlkNokta=null;
+  ['btn-h-isin','btn-v-isin','btn-cetvel'].forEach(id=>{
     const b=document.getElementById(id);
     if(b) b.classList.remove('cizim-aktif');
   });
@@ -1405,6 +1409,29 @@ function grafikEventleriAktar(){
         line:{color:'#f59e0b',width:1.5,dash:'dash'},
         _lbl:String(x).slice(0,10),_tip:'v'
       });
+    } else if(aktifArac==='cetvel'){
+      const yv=parseFloat(y);
+      if(!cetvelIlkNokta){
+        cetvelIlkNokta={x:x,y:yv};
+      } else {
+        const x1=cetvelIlkNokta.x, y1=cetvelIlkNokta.y, x2=x, y2=yv;
+        const yuzde=(y2-y1)/y1*100;
+        const hs=document.getElementById('hisse-sec');
+        const cv=hs?grafikVerisi[hs.value]:null;
+        const tarArr=(cv&&cv.tarihler)?cv.tarihler:null;
+        let mumTxt='';
+        if(tarArr){
+          const i1=tarArr.indexOf(x1), i2=tarArr.indexOf(x2);
+          if(i1>=0&&i2>=0) mumTxt=' · '+Math.abs(i2-i1)+' mum';
+        }
+        isinlar.push({
+          type:'line',xref:'x',yref:'y',
+          x0:x1,x1:x2,y0:y1,y1:y2,
+          line:{color:'#22d3ee',width:1.5,dash:'dot'},
+          _lbl:(yuzde>=0?'+':'')+yuzde.toFixed(2)+'%'+mumTxt,_tip:'cetvel'
+        });
+        cetvelIlkNokta=null;
+      }
     }
     grafikGuncelle();
   });
@@ -1517,6 +1544,11 @@ function grafikGuncelle(){
         text:r._lbl,xanchor:'left',yanchor:'top',showarrow:false,
         font:{size:9,color:'#f59e0b'},
         bgcolor:'rgba(7,5,14,.75)',borderpad:2,bordercolor:'rgba(245,158,11,.3)',borderwidth:1});
+    } else if(r._tip==='cetvel'){
+      anns.push({x:r.x1,y:r.y1,xref:'x',yref:'y',
+        text:r._lbl,showarrow:false,yshift:14,
+        font:{size:9,color:'#22d3ee'},
+        bgcolor:'rgba(7,5,14,.75)',borderpad:2,bordercolor:'rgba(34,211,238,.3)',borderwidth:1});
     }
   });
 
@@ -1870,19 +1902,6 @@ function alarmGun(){
       if(Array.isArray(srv)){_lsAlarmlarKaydet(srv);_alarmRender(srv);}
     })
     .catch(()=>{});
-}
-
-function syncKopyala(){
-  const el=document.getElementById('sync-kod');
-  if(el){navigator.clipboard.writeText(el.value).then(()=>alert('Sync kodu kopyalandi!'));}
-}
-
-function syncUygula(){
-  const giris=(document.getElementById('sync-giris').value||'').trim();
-  if(!giris){alert('Lutfen bir sync kodu girin.');return;}
-  localStorage.setItem('lidya_sid',giris);
-  alert('Sync kodu uygulandı! Sayfa yenileniyor...');
-  location.reload();
 }
 
 // ── Ekonomik Takvim ──────────────────────────────────
@@ -2562,6 +2581,47 @@ def kenar_verileri_cek():
         sonuc[grup] = liste
     return sonuc
 
+def _feed_entry_zamani(entry):
+    if getattr(entry, 'published_parsed', None):
+        import calendar
+        try:
+            return datetime.fromtimestamp(calendar.timegm(entry.published_parsed))
+        except Exception:
+            pass
+    return datetime.now()
+
+def hisse_ozel_haberler():
+    if not _HABER_ANALIZI_OK:
+        return []
+    sonuc = []
+    for sembol in HISSELER:
+        sembol_adi = sembol.replace('.IS', '')
+        try:
+            for h in _google_news_rss(f"{sembol_adi} hisse borsa", 'tr'):
+                if not h.get('baslik'):
+                    continue
+                sonuc.append({
+                    'baslik': h['baslik'][:90],
+                    'kaynak': f"{h['kaynak']} — {sembol_adi}",
+                    'link'  : f"https://news.google.com/search?q={sembol_adi}%20hisse%20borsa&hl=tr",
+                    'zaman' : h.get('zaman') or datetime.now(),
+                })
+        except Exception:
+            pass
+        try:
+            for h in _yahoo_news_cek(sembol):
+                if not h.get('baslik'):
+                    continue
+                sonuc.append({
+                    'baslik': h['baslik'][:90],
+                    'kaynak': f"{h['kaynak']} — {sembol_adi}",
+                    'link'  : f"https://finance.yahoo.com/quote/{sembol}/news",
+                    'zaman' : h.get('zaman') or datetime.now(),
+                })
+        except Exception:
+            pass
+    return sonuc
+
 def haber_cek():
     if _feedparser is None:
         return []
@@ -2584,11 +2644,21 @@ def haber_cek():
                     gruplar.append({
                         'baslik': baslik[:90],
                         'kaynak': kaynak,
-                        'link'  : entry.get('link', '#')
+                        'link'  : entry.get('link', '#'),
+                        'zaman' : _feed_entry_zamani(entry),
                     })
         except:
             pass
-    return gruplar[:30]
+
+    gruplar += hisse_ozel_haberler()
+
+    simdi = datetime.now()
+    gruplar = [g for g in gruplar if (simdi - g['zaman']) <= timedelta(hours=48)]
+    gruplar.sort(key=lambda g: g['zaman'], reverse=True)
+    gruplar = gruplar[:60]
+    for g in gruplar:
+        g.pop('zaman', None)
+    return gruplar
 
 def ozellikler_ekle(df):
     df = df.copy()
