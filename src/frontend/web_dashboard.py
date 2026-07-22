@@ -27,6 +27,11 @@ try:
     _PSYCOPG2_OK = True
 except ImportError:
     _PSYCOPG2_OK = False
+try:
+    import jwt as _pyjwt
+    _PYJWT_OK = True
+except ImportError:
+    _PYJWT_OK = False
 
 # ─── Ayarlar ───────────────────────────────────────────
 HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
@@ -48,6 +53,66 @@ def db_baglan():
     except Exception as e:
         print(f"[DB] Baglanti hatasi: {e}")
         return None
+
+# ─── Supabase (kullanici hesabi) ────────────────────────
+SUPABASE_URL        = os.environ.get('SUPABASE_URL', '')
+SUPABASE_ANON_KEY    = os.environ.get('SUPABASE_ANON_KEY', '')
+SUPABASE_JWT_SECRET  = os.environ.get('SUPABASE_JWT_SECRET')  # legacy HS256 yedek yol icin
+_jwks_client = None
+
+def _jwks_al():
+    global _jwks_client
+    if _jwks_client is None and SUPABASE_URL:
+        _jwks_client = _pyjwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
+
+def dogrulanan_kullanici_id():
+    """Authorization: Bearer <supabase_jwt> header'i varsa dogrulayip user_id (sub) doner.
+    Header yoksa None doner (anonim akis icin normal durum). Gecersiz token'da da None
+    doner, ama cagiran route bunu ayirt edebilsin diye ikinci bir bayrak dondurulur.
+    Supabase yeni projelerde ES256 (JWKS ile) imzali oturum token'lari verir; JWKS
+    ucu once denenir, olmazsa (eski projeler icin) HS256+SUPABASE_JWT_SECRET denenir."""
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return None, False
+    if not _PYJWT_OK:
+        return None, True
+    token = auth[7:]
+    try:
+        client = _jwks_al()
+        if client is not None:
+            signing_key = client.get_signing_key_from_jwt(token)
+            payload = _pyjwt.decode(
+                token, signing_key.key, algorithms=['ES256', 'RS256'],
+                audience='authenticated'
+            )
+            return payload.get('sub'), True
+    except Exception as e:
+        print(f"[Auth] JWKS dogrulama hatasi, HS256 deneniyor: {e}")
+    if SUPABASE_JWT_SECRET:
+        try:
+            payload = _pyjwt.decode(
+                token, SUPABASE_JWT_SECRET, algorithms=['HS256'],
+                audience='authenticated'
+            )
+            return payload.get('sub'), True
+        except Exception as e:
+            print(f"[Auth] Token dogrulama hatasi: {e}")
+    return None, True
+
+def sid_yetki_hatasi(sid):
+    """Portfoy/alarm route'larinin basinda cagrilir. Authorization header'i yoksa
+    None doner (anonim akisa devam et, mevcut davranis). Header varsa dogrular;
+    gecersizse veya sid ile eslesmiyorsa (jsonify(...), status) doner — route bunu
+    direkt 'return' etmeli. Uyusursa None doner (devam et)."""
+    user_id, header_vardi = dogrulanan_kullanici_id()
+    if not header_vardi:
+        return None
+    if user_id is None:
+        return jsonify({'hata': 'Gecersiz veya suresi dolmus oturum'}), 401
+    if user_id != sid:
+        return jsonify({'hata': 'Bu veriye erisim yetkiniz yok'}), 403
+    return None
 
 def db_tablolari_olustur():
     conn = db_baglan()
@@ -653,6 +718,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="tb" onclick="tabAc('portfoy',this)">Portföy</button>
   <button class="tb" onclick="tabAc('takvim',this)">Takvim</button>
   <button class="tb" onclick="tabAc('alarmlar',this)">Alarmlar</button>
+  <button class="tb" onclick="tabAc('hesap',this)">Hesap</button>
 </nav>
 
 <div class="uyari">⚠ Bu platform <b>deneyseldir</b>. Gösterilen veriler <b>yatırım tavsiyesi değildir</b> — model çıktılarının geçmiş gerçek başarı oranını <b>Track Record</b> sekmesinde görebilirsiniz.</div>
@@ -767,8 +833,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="ctit">Kümülatif Performans</div>
     <div id="perf-grafik" style="height:220px"></div>
   </div>
+  <div class="card" id="tr-portfoy-kart" style="display:none">
+    <div class="ctit">Portföyünüzdeki Hisseler</div>
+    <div id="track-record-portfoy"><div class="es">Yükleniyor...</div></div>
+  </div>
   <div class="card">
-    <div class="ctit">Sinyal Geçmişi</div>
+    <div class="ctit" id="tr-genel-baslik">Sinyal Geçmişi</div>
     <div id="track-record-alani"><div class="es">Yükleniyor...</div></div>
   </div>
 </div>
@@ -813,7 +883,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div id="alarm-listesi"><div class="es">Henüz alarm yok.</div></div>
   </div>
-  <div class="card">
+  <div class="card" id="sync-kart">
     <div class="ctit">Cihazlar Arasi Sync</div>
     <p style="font-size:12px;color:var(--mu);margin-bottom:10px">Asagidaki kodu baska cihaza yapistir, portfoy ve alarmlar oraya tasinir.</p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -881,6 +951,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 </div>
 
+<!-- TAB: Hesap -->
+<div id="tab-hesap" class="tp">
+<div class="con">
+  <div id="hesap-cikis-yapilmis" class="card" style="display:none">
+    <div class="ctit">Hesabım</div>
+    <div style="font-size:13px;color:var(--tx);margin-bottom:12px">Giriş yapıldı: <strong id="hesap-eposta"></strong></div>
+    <div style="font-size:11px;color:var(--mu);margin-bottom:12px">Portföyünüz ve alarmlarınız artık bu hesaba bağlı — hangi cihazdan giriş yaparsanız yapın aynı veriyi görürsünüz.</div>
+    <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="hesapCikisYap()">Çıkış Yap</button>
+  </div>
+  <div id="hesap-giris-yapilmamis" class="card">
+    <div class="ctit">Kayıt Ol / Giriş Yap</div>
+    <div style="font-size:11px;color:var(--mu);margin-bottom:12px">Hesap oluşturursanız portföyünüz ve alarmlarınız kalıcı olarak bu hesaba kaydedilir. Hesap açmadan da (anonim) kullanmaya devam edebilirsiniz.</div>
+    <div class="pf">
+      <input class="pi" id="hesap-eposta-giris" placeholder="E-posta" type="email" style="max-width:220px">
+      <input class="pi" id="hesap-sifre-giris" placeholder="Şifre" type="password" style="max-width:160px">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <button class="ba" onclick="hesapGirisYap()">Giriş Yap</button>
+      <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="hesapKayitOl()">Kayıt Ol</button>
+    </div>
+    <div id="hesap-mesaj" style="font-size:12px;margin-top:10px"></div>
+  </div>
+</div>
+</div>
+
 </main>
 
 <!-- RIGHT: Fiyatlar -->
@@ -938,6 +1033,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
     Alarmlar
   </button>
+  <button class="bni" id="bni-hesap" onclick="tabMob('hesap',this)">
+    <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Hesap
+  </button>
 </nav>
 
 <div id="sirket-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)sirketKapat()">
@@ -947,6 +1046,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
 const KARAR_ETIKET={AL:'POZİTİF',SAT:'NEGATİF',BEKLE:'NÖTR'};
+const SUPABASE_URL='{{ supabase_url }}', SUPABASE_ANON_KEY='{{ supabase_anon_key }}';
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={}, sinyalVerisi=[];
 let indAktif={ma200:false,bb:false,macd:false,stoch:false,pivotlar:false,sinyaller:true};
 let cizimModu=false, aktifArac=null, isinlar=[];
@@ -963,6 +1063,135 @@ function getSid(){
 }
 const SID=getSid();
 
+// ─── Hesap (Supabase Auth) ──────────────────────────────
+function _authOku(){
+  try{ return JSON.parse(localStorage.getItem('lidya_auth')||'null'); }catch(e){ return null; }
+}
+function _authYaz(a){ localStorage.setItem('lidya_auth', JSON.stringify(a)); }
+function _authSil(){ localStorage.removeItem('lidya_auth'); }
+
+function aktifSid(){
+  const a=_authOku();
+  return a ? a.user_id : SID;
+}
+
+async function authYenile(auth){
+  try{
+    const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=refresh_token',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({refresh_token:auth.refresh_token})
+    });
+    const d=await r.json();
+    if(!r.ok || !d.access_token){ _authSil(); return null; }
+    const yeni={access_token:d.access_token, refresh_token:d.refresh_token,
+      user_id:d.user.id, email:d.user.email, expires_at:Date.now()+d.expires_in*1000};
+    _authYaz(yeni);
+    return yeni;
+  }catch(e){ return auth; }
+}
+
+async function fetchYetkili(url,opts){
+  opts=opts||{};
+  let auth=_authOku();
+  if(auth){
+    if(Date.now() > auth.expires_at-60000) auth=await authYenile(auth);
+    if(auth) opts.headers=Object.assign({},opts.headers||{},{'Authorization':'Bearer '+auth.access_token});
+  }
+  return fetch(url,opts);
+}
+
+async function hesabaVeriTasi(yeniUserId){
+  if(SID===yeniUserId) return;
+  try{
+    const [pR,aR]=await Promise.all([fetch('/api/portfoy/'+SID), fetch('/api/alarmlar/'+SID)]);
+    const [pD,aD]=[await pR.json(), await aR.json()];
+    for(const p of (pD||[])){
+      await fetchYetkili('/api/portfoy/'+yeniUserId,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sembol:p.sembol, adet:p.adet, maliyet:p.maliyet})});
+    }
+    for(const a of (aD||[])){
+      await fetchYetkili('/api/alarmlar/'+yeniUserId,{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sembol:a.sembol, yon:a.yon, fiyat:a.fiyat})});
+    }
+    if((pD&&pD.length)||(aD&&aD.length)){
+      const m=document.getElementById('hesap-mesaj');
+      if(m){ m.className='gr'; m.textContent='Mevcut portföy/alarm verileriniz hesabınıza taşındı.'; }
+    }
+  }catch(e){ console.warn('Veri tasima hatasi', e); }
+}
+
+function hesapUIGuncelle(){
+  const a=_authOku();
+  const girisli=document.getElementById('hesap-cikis-yapilmis');
+  const girissiz=document.getElementById('hesap-giris-yapilmamis');
+  const sync=document.getElementById('sync-kart');
+  if(a){
+    if(girisli) girisli.style.display='';
+    if(girissiz) girissiz.style.display='none';
+    if(sync) sync.style.display='none';
+    const e=document.getElementById('hesap-eposta'); if(e) e.textContent=a.email;
+  }else{
+    if(girisli) girisli.style.display='none';
+    if(girissiz) girissiz.style.display='';
+    if(sync) sync.style.display='';
+  }
+}
+
+async function hesapGirisBasarili(d){
+  const auth={access_token:d.access_token, refresh_token:d.refresh_token,
+    user_id:d.user.id, email:d.user.email, expires_at:Date.now()+d.expires_in*1000};
+  const eskiSid=SID;
+  _authYaz(auth);
+  hesapUIGuncelle();
+  await hesabaVeriTasi(auth.user_id);
+  portfoyGun(); alarmGun(); alarm2Gun();
+}
+
+async function hesapKayitOl(){
+  const email=document.getElementById('hesap-eposta-giris').value.trim();
+  const sifre=document.getElementById('hesap-sifre-giris').value;
+  const m=document.getElementById('hesap-mesaj');
+  if(!email||!sifre){ m.className='re'; m.textContent='E-posta ve şifre gerekli.'; return; }
+  try{
+    const r=await fetch(SUPABASE_URL+'/auth/v1/signup',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({email,password:sifre})
+    });
+    const d=await r.json();
+    if(!r.ok){ m.className='re'; m.textContent=d.error_description||d.msg||'Kayıt başarısız.'; return; }
+    if(d.access_token){ await hesapGirisBasarili(d); }
+    else { m.className='ye'; m.textContent='Kayıt alındı — e-postanızı kontrol edip doğrulama linkine tıklayın, sonra giriş yapın.'; }
+  }catch(e){ m.className='re'; m.textContent='Bağlantı hatası: '+e.message; }
+}
+
+async function hesapGirisYap(){
+  const email=document.getElementById('hesap-eposta-giris').value.trim();
+  const sifre=document.getElementById('hesap-sifre-giris').value;
+  const m=document.getElementById('hesap-mesaj');
+  if(!email||!sifre){ m.className='re'; m.textContent='E-posta ve şifre gerekli.'; return; }
+  try{
+    const r=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY},
+      body:JSON.stringify({email,password:sifre})
+    });
+    const d=await r.json();
+    if(!r.ok||!d.access_token){ m.className='re'; m.textContent=d.error_description||d.msg||'Giriş başarısız.'; return; }
+    m.className='gr'; m.textContent='Giriş yapıldı.';
+    await hesapGirisBasarili(d);
+  }catch(e){ m.className='re'; m.textContent='Bağlantı hatası: '+e.message; }
+}
+
+function hesapCikisYap(){
+  _authSil();
+  hesapUIGuncelle();
+  portfoyGun(); alarmGun(); alarm2Gun();
+}
+
 function tabAc(id,btn){
   document.querySelectorAll('.tp').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.tb').forEach(e=>e.classList.remove('active'));
@@ -977,6 +1206,7 @@ function tabAc(id,btn){
   if(id==='portfoy'){portfoyGun();alarmGun();const sk=document.getElementById('sync-kod');if(sk) sk.value=SID;}
   if(id==='takvim') takvimYukle();
   if(id==='alarmlar'){alarm2Gun();bildirimDurumGun();alarmTurGun();}
+  if(id==='hesap') hesapUIGuncelle();
 }
 
 function tabMob(id,btn){
@@ -1365,10 +1595,29 @@ function trTabGun(tr){
   const tk=document.getElementById('tr-ort-kar'); tk.className='trv '+kr;
   tk.textContent=tr.tamamlanan>0?'%'+(tr.ort_kar>0?'+':'')+tr.ort_kar:'-';
   if(!tr.son_sinyaller||!tr.son_sinyaller.length){
-    document.getElementById('track-record-alani').innerHTML='<div class="es">Henuz tamamlanan sinyal yok.</div>';return;
+    document.getElementById('track-record-alani').innerHTML='<div class="es">Henuz tamamlanan sinyal yok.</div>';
+    const pk=document.getElementById('tr-portfoy-kart'); if(pk) pk.style.display='none';
+    return;
   }
+  const portfoySemboller=new Set(_lsPortfoy().map(x=>x.sembol));
+  const enPortfoy=tr.son_sinyaller.filter(s=>portfoySemboller.has((s.sembol||'').replace('.IS','')));
+  const genel=tr.son_sinyaller.filter(s=>!portfoySemboller.has((s.sembol||'').replace('.IS','')));
+  const pk=document.getElementById('tr-portfoy-kart'), gb=document.getElementById('tr-genel-baslik');
+  if(enPortfoy.length){
+    pk.style.display='';
+    document.getElementById('track-record-portfoy').innerHTML=_trTabloOlustur(enPortfoy);
+    gb.textContent='Diğer Hisseler';
+  } else {
+    pk.style.display='none';
+    gb.textContent='Sinyal Geçmişi';
+  }
+  document.getElementById('track-record-alani').innerHTML=_trTabloOlustur(enPortfoy.length?genel:tr.son_sinyaller);
+}
+
+function _trTabloOlustur(liste){
+  if(!liste.length) return '<div class="es">Bu grupta sinyal yok.</div>';
   let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Gosterge</th><th>Giris</th><th>Ref. Direnc</th><th>Ref. Destek</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
-  tr.son_sinyaller.forEach(s=>{
+  liste.forEach(s=>{
     const kzv=s.kar_zarar?parseFloat(s.kar_zarar):null;
     const sr=s.sonuc==='KAZANDI'?'gr':s.sonuc==='KAYBETTI'?'re':'ye';
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
@@ -1384,7 +1633,7 @@ function trTabGun(tr){
       '<td>'+kzs+'</td>'+
       '<td class="'+sr+'" style="font-weight:600">'+(s.sonuc||'Bekliyor')+'</td></tr>';
   });
-  document.getElementById('track-record-alani').innerHTML=h+'</tbody></table>';
+  return h+'</tbody></table>';
 }
 
 function perfCiz(){
@@ -1505,7 +1754,7 @@ function portfoyEkle(){
   if(i>=0) p[i]={sembol:s,adet:a,maliyet:m}; else p.push({sembol:s,adet:a,maliyet:m});
   _lsPortfoyKaydet(p);
   _portfoyRender(p);
-  fetch('/api/portfoy/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+  fetchYetkili('/api/portfoy/'+aktifSid(),{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({sembol:s,adet:a,maliyet:m})}).catch(()=>{});
 }
 
@@ -1513,13 +1762,13 @@ function portfoySil(s){
   const p=_lsPortfoy().filter(x=>x.sembol!==s);
   _lsPortfoyKaydet(p);
   _portfoyRender(p);
-  fetch('/api/portfoy/'+SID+'/'+s,{method:'DELETE'}).catch(()=>{});
+  fetchYetkili('/api/portfoy/'+aktifSid()+'/'+s,{method:'DELETE'}).catch(()=>{});
 }
 
 function portfoyGun(){
   const local=_lsPortfoy();
   _portfoyRender(local);
-  fetch('/api/portfoy/'+SID)
+  fetchYetkili('/api/portfoy/'+aktifSid())
     .then(r=>r.json())
     .then(srv=>{
       if(srv&&srv.length>0){_lsPortfoyKaydet(srv);_portfoyRender(srv);}
@@ -1561,7 +1810,7 @@ function alarmEkle(){
   a.push({sembol:s,yon:y,fiyat:f,tetiklendi:false});
   _lsAlarmlarKaydet(a);
   _alarmRender(a);
-  fetch('/api/alarmlar/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+  fetchYetkili('/api/alarmlar/'+aktifSid(),{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({sembol:s,yon:y,fiyat:f})})
     .then(r=>r.json())
     .then(res=>{if(res.id){alarmGun();}})
@@ -1570,7 +1819,7 @@ function alarmEkle(){
 
 function alarmSil(key){
   if(typeof key==='number'){
-    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'}).catch(()=>{});
+    fetchYetkili('/api/alarmlar/'+aktifSid()+'/'+key,{method:'DELETE'}).catch(()=>{});
     const a=_lsAlarmlar().filter(x=>x.id!==key);
     _lsAlarmlarKaydet(a); _alarmRender(a);
   } else {
@@ -1613,7 +1862,7 @@ function alarmKontrol(){
 function alarmGun(){
   const local=_lsAlarmlar();
   _alarmRender(local);
-  fetch('/api/alarmlar/'+SID)
+  fetchYetkili('/api/alarmlar/'+aktifSid())
     .then(r=>r.json())
     .then(srv=>{
       if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarmRender(srv);}
@@ -1716,14 +1965,14 @@ function alarm2Ekle(){
   const a=_lsAlarmlar();
   a.push({sembol:s,yon:tur,fiyat:fiyatVal,tetiklendi:false,id:Date.now()});
   _lsAlarmlarKaydet(a); _alarm2Render(a);
-  fetch('/api/alarmlar/'+SID,{method:'POST',headers:{'Content-Type':'application/json'},
+  fetchYetkili('/api/alarmlar/'+aktifSid(),{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({sembol:s,yon:tur,fiyat:fiyatVal})})
     .then(r=>r.json()).then(res=>{if(res.id) alarm2Gun();}).catch(()=>{});
 }
 
 function alarm2Sil(key){
   if(typeof key==='number'){
-    fetch('/api/alarmlar/'+SID+'/'+key,{method:'DELETE'}).catch(()=>{});
+    fetchYetkili('/api/alarmlar/'+aktifSid()+'/'+key,{method:'DELETE'}).catch(()=>{});
     const a=_lsAlarmlar().filter(x=>x.id!==key);
     _lsAlarmlarKaydet(a); _alarm2Render(a);
   } else {
@@ -1737,7 +1986,7 @@ function alarm2Sil(key){
 
 function alarm2Gun(){
   const local=_lsAlarmlar(); _alarm2Render(local);
-  fetch('/api/alarmlar/'+SID).then(r=>r.json()).then(srv=>{
+  fetchYetkili('/api/alarmlar/'+aktifSid()).then(r=>r.json()).then(srv=>{
     if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarm2Render(srv);}
   }).catch(()=>{});
 }
@@ -2173,7 +2422,7 @@ function saatGuncelle(){
 saatGuncelle();
 setInterval(saatGuncelle,1000);
 
-alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); veriCek(); setInterval(veriCek,10000);
+hesapUIGuncelle(); alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); veriCek(); setInterval(veriCek,10000);
 </script>
 </body>
 </html>'''
@@ -2774,7 +3023,9 @@ def sistem_baslat():
 
 @app.route('/')
 def index():
-    return render_template_string(HTML, hisseler=HISSELER)
+    return render_template_string(HTML, hisseler=HISSELER,
+                                   supabase_url=SUPABASE_URL,
+                                   supabase_anon_key=SUPABASE_ANON_KEY)
 
 def json_temizle(data):
     if isinstance(data, dict):
@@ -2936,11 +3187,15 @@ def api_takvim():
 
 @app.route('/api/portfoy/<sid>', methods=['GET'])
 def api_portfoy_oku(sid):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     data = portfoy_db_oku(sid)
     return jsonify(data if data is not None else [])
 
 @app.route('/api/portfoy/<sid>', methods=['POST'])
 def api_portfoy_kaydet(sid):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     d = request.get_json() or {}
     ok = portfoy_db_kaydet(sid, d.get('sembol', ''),
                             float(d.get('adet', 0)), float(d.get('maliyet', 0)))
@@ -2948,16 +3203,22 @@ def api_portfoy_kaydet(sid):
 
 @app.route('/api/portfoy/<sid>/<sembol>', methods=['DELETE'])
 def api_portfoy_sil(sid, sembol):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     ok = portfoy_db_sil(sid, sembol)
     return jsonify({'ok': ok})
 
 @app.route('/api/alarmlar/<sid>', methods=['GET'])
 def api_alarmlar_oku(sid):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     data = alarmlar_db_oku(sid)
     return jsonify(data if data is not None else [])
 
 @app.route('/api/alarmlar/<sid>', methods=['POST'])
 def api_alarm_ekle(sid):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     d = request.get_json() or {}
     new_id = alarm_db_ekle(sid, d.get('sembol', ''), d.get('yon', 'above'),
                             float(d.get('fiyat', 0)))
@@ -2965,6 +3226,8 @@ def api_alarm_ekle(sid):
 
 @app.route('/api/alarmlar/<sid>/<int:alarm_id>', methods=['DELETE'])
 def api_alarm_sil(sid, alarm_id):
+    hata = sid_yetki_hatasi(sid)
+    if hata: return hata
     ok = alarm_db_sil(sid, alarm_id)
     return jsonify({'ok': ok})
 
