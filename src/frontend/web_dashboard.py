@@ -515,6 +515,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .brand-sub{font-size:9px;color:var(--mu);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
 .badge{background:#22c55e14;border:1px solid #22c55e28;color:var(--gr);padding:3px 10px;border-radius:20px;font-size:11px;}
 .badge.kapali{background:#ef444414;border-color:#ef444428;color:var(--re);}
+.hesap-cta{background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);color:#0c0a17;border:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:800;letter-spacing:.3px;cursor:pointer;box-shadow:0 0 14px rgba(167,139,250,.45);transition:transform .18s,filter .18s;white-space:nowrap;}
+.hesap-cta:hover{transform:scale(1.05);filter:brightness(1.1);}
 .tnav{background:var(--sf);border-bottom:1px solid var(--bd);display:flex;padding:0 20px;overflow-x:auto;position:sticky;top:52px;z-index:100;}
 .tnav::-webkit-scrollbar{display:none;}
 .tb{padding:11px 18px;border:none;background:none;color:var(--mu);cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s;}
@@ -651,6 +653,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   #sirket-kartlar{grid-template-columns:repeat(2,1fr)!important;}
   .sg{grid-template-columns:repeat(2,1fr);}
   .trg{grid-template-columns:repeat(2,1fr);}
+  .hesap-cta{padding:5px 11px;font-size:11px;}
+}
+@media(max-width:420px){
+  #son-guncelleme{display:none;}
 }
 /* Ekonomik Takvim */
 .tak-filtre{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
@@ -713,6 +719,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div style="display:flex;gap:10px;align-items:center">
     <button class="mob-menu-btn" onclick="drawerAc()" title="Haberler">&#9776;</button>
     <span id="borsa-durum" class="badge">● YÜKLENIYOR</span>
+    <button class="hesap-cta" id="hesap-cta" onclick="tabAc('hesap', null)">Kayıt Ol</button>
     <span id="son-guncelleme" style="font-size:10px;color:var(--mu)"></span>
   </div>
 </div>
@@ -1130,15 +1137,18 @@ function hesapUIGuncelle(){
   const girisli=document.getElementById('hesap-cikis-yapilmis');
   const girissiz=document.getElementById('hesap-giris-yapilmamis');
   const nudge=document.getElementById('hesap-nudge');
+  const cta=document.getElementById('hesap-cta');
   if(a){
     if(girisli) girisli.style.display='';
     if(girissiz) girissiz.style.display='none';
     if(nudge) nudge.style.display='none';
     const e=document.getElementById('hesap-eposta'); if(e) e.textContent=a.email;
+    if(cta) cta.textContent='Hesabım';
   }else{
     if(girisli) girisli.style.display='none';
     if(girissiz) girissiz.style.display='';
     if(nudge) nudge.style.display='';
+    if(cta) cta.textContent='Kayıt Ol';
   }
 }
 
