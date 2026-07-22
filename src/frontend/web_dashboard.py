@@ -882,6 +882,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="ctit">Sirket Profilleri</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px" id="sirket-kartlar"><div class="es">Sinyaller yukleniyor...</div></div>
   </div>
+  <div class="card">
+    <div class="ctit">Değer Taraması</div>
+    <div style="font-size:11px;color:var(--mu);margin-bottom:10px">ML tahminine dayanmaz — sadece F/K, PD/DD ve temettü verimine göre kaba bir referans. Yatırım tavsiyesi değildir.</div>
+    <div id="deger-taramasi-alani"><div class="es">Yükleniyor...</div></div>
+  </div>
 </div>
 </div>
 
@@ -1385,6 +1390,24 @@ function sayfaGun(data){
   sirketKartlariGun(sn);
 }
 
+function degerTaramasiYukle(){
+  const el=document.getElementById('deger-taramasi-alani');
+  if(!el) return;
+  fetch('/api/deger-taramasi').then(r=>r.json()).then(liste=>{
+    if(!liste||!liste.length){el.innerHTML='<div class="es">Veri yok.</div>';return;}
+    const etikSinif=e=>e==='Ucuz'?'gr':e==='Pahalı'?'re':e==='Normal'?'ye':'';
+    let h='<table class="t"><thead><tr><th>Hisse</th><th>F/K</th><th>PD/DD</th><th>Temettü Verimi</th><th>Referans</th></tr></thead><tbody>';
+    liste.forEach(s=>{
+      h+='<tr><td style="font-weight:700">'+s.sembol+'</td>'+
+        '<td>'+(s.fk!=null?Number(s.fk).toFixed(1):'-')+'</td>'+
+        '<td>'+(s.pd_dd!=null?Number(s.pd_dd).toFixed(2):'-')+'</td>'+
+        '<td>'+(s.temettu!=null?'%'+Number(s.temettu).toFixed(1):'-')+'</td>'+
+        '<td class="'+etikSinif(s.etiket)+'">'+s.etiket+'</td></tr>';
+    });
+    el.innerHTML=h+'</tbody></table>';
+  }).catch(()=>{el.innerHTML='<div class="es">Yüklenemedi.</div>';});
+}
+
 const SMAP={AKBNK:'Bankacilik',GARAN:'Bankacilik',YKBNK:'Bankacilik',EKGYO:'Gayrimenkul',PGSUS:'Havacilik',THYAO:'Havacilik',TCELL:'Telekom',SISE:'Cam & Kimya',FROTO:'Otomotiv',EREGL:'Demir & Celik',ASELS:'Savunma',TUPRS:'Petrol & Enerji'};
 
 function sektorGun(sn){
@@ -1878,7 +1901,25 @@ function _portfoyRender(p){
   });
   tbl.innerHTML=h+'</tbody></table>';
   const nkz=totD-totM,nkzp=totM>0?nkz/totM*100:0,nr=nkz>=0?'gr':'re';
-  if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>';}
+  // Sektor cesitlendirme skoru (SMAP kullanarak, tamamen tarayicida)
+  const sektorDeger={};
+  let toplamDeger=0;
+  p.forEach(x=>{
+    const g=fiyatlar[x.sembol]||x.maliyet, deger=g*x.adet;
+    const sek=SMAP[x.sembol]||'Diğer';
+    sektorDeger[sek]=(sektorDeger[sek]||0)+deger;
+    toplamDeger+=deger;
+  });
+  let enBuyukSek='-', enBuyukPay=0;
+  Object.entries(sektorDeger).forEach(([sek,v])=>{
+    const pay=toplamDeger>0?v/toplamDeger*100:0;
+    if(pay>enBuyukPay){enBuyukPay=pay;enBuyukSek=sek;}
+  });
+  const cesitRenk=enBuyukPay>60?'re':enBuyukPay>40?'ye':'gr';
+  const cesitEtiket=enBuyukPay>60?'Düşük çeşitlendirme':enBuyukPay>40?'Orta çeşitlendirme':'İyi çeşitlendirme';
+  if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>'+
+    '<span>Çeşitlendirme: <strong class="'+cesitRenk+'">%'+enBuyukPay.toFixed(0)+' '+enBuyukSek+' — '+cesitEtiket+'</strong></span>'+
+    '<span style="color:var(--mu);font-size:11px">BIST hisselerinde alım-satım kazancı stopajı %0\'dır (Geçici 67) — net kâr/zararınız yukarıdaki gibidir.</span>';}
   portfoyGrafikleriCiz(p);
 }
 
@@ -2387,7 +2428,7 @@ function sirketAc(sembol){
     const metriks=[
       ['Piyasa Degeri',fmtP(f.piyasaDegeri)],['F/K',fmt(f.fk,1)],['PD/DD',fmt(f.pd_dd,2)],
       ['52H Yuksek',fmt(f.yuksek52,2,' TL')],['52H Dusuk',fmt(f.dusuk52,2,' TL')],
-      ['Temettu',f.temettu!=null?'%'+Number(f.temettu*100).toFixed(1):'-'],
+      ['Temettu',f.temettu!=null?'%'+Number(f.temettu).toFixed(1):'-'],
       ['Beta',fmt(f.beta,2)],['Calisan',f.calisanSayisi?Number(f.calisanSayisi).toLocaleString('tr-TR'):'-'],
     ];
     let h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">'+
@@ -2471,7 +2512,7 @@ function finansallarYukle(sembol){
       '<div class="oran-item"><div class="oran-l">PD/DD</div><div class="oran-v">'+(o.pd_dd?Number(o.pd_dd).toFixed(2):'—')+'</div></div>'+
       '<div class="oran-item"><div class="oran-l">ROE</div><div class="oran-v">'+(o.roe!=null?'%'+o.roe:'—')+'</div></div>'+
       '<div class="oran-item"><div class="oran-l">ROA</div><div class="oran-v">'+(o.roa!=null?'%'+o.roa:'—')+'</div></div>'+
-      '<div class="oran-item"><div class="oran-l">Temettu</div><div class="oran-v">'+(o.temettu?'%'+(o.temettu*100).toFixed(1):'—')+'</div></div>'+
+      '<div class="oran-item"><div class="oran-l">Temettu</div><div class="oran-v">'+(o.temettu?'%'+Number(o.temettu).toFixed(1):'—')+'</div></div>'+
       '<div class="oran-item"><div class="oran-l">Beta</div><div class="oran-v">'+(o.beta?Number(o.beta).toFixed(2):'—')+'</div></div>'+
       '</div>';
     html+='<div class="fin-2kol">'+
@@ -2554,7 +2595,7 @@ function saatGuncelle(){
 saatGuncelle();
 setInterval(saatGuncelle,1000);
 
-hesapUIGuncelle(); alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); veriCek(); setInterval(veriCek,10000);
+hesapUIGuncelle(); alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); degerTaramasiYukle(); veriCek(); setInterval(veriCek,10000);
 </script>
 </body>
 </html>'''
@@ -3402,6 +3443,46 @@ def api_finans(sembol):
     except Exception as e:
         print(f"[FINANS] {sembol}: {e}")
         return jsonify({'error': str(e)}), 500
+
+_deger_tarama_cache = {'zaman': None, 'veri': None}
+
+@app.route('/api/deger-taramasi')
+def api_deger_taramasi():
+    """ML tahminine dayanmayan, saf F/K-PD/DD-Temettu bazli bir referans taramasi.
+    24 saatlik onbellek - /api/finans ile ayni desen."""
+    global _deger_tarama_cache
+    if _deger_tarama_cache['zaman'] is not None:
+        gecen = (datetime.now() - _deger_tarama_cache['zaman']).total_seconds()
+        if gecen < 86400:
+            return jsonify(_deger_tarama_cache['veri'])
+    sonuc = []
+    for sembol_is in HISSELER:
+        sembol = sembol_is.replace('.IS', '')
+        try:
+            info = yf.Ticker(sembol_is).info or {}
+            fk    = info.get('trailingPE')
+            pd_dd = info.get('priceToBook')
+            temettu = round(info.get('dividendYield', 0) or 0, 4)
+            if fk is None:
+                etiket = 'Veri Yok'
+            elif fk < 10:
+                etiket = 'Ucuz'
+            elif fk <= 20:
+                etiket = 'Normal'
+            else:
+                etiket = 'Pahalı'
+            sonuc.append({
+                'sembol': sembol, 'fk': fk, 'pd_dd': pd_dd,
+                'temettu': temettu, 'etiket': etiket,
+            })
+        except Exception as e:
+            print(f"[DEGER TARAMASI] {sembol}: {e}")
+            sonuc.append({'sembol': sembol, 'fk': None, 'pd_dd': None,
+                           'temettu': None, 'etiket': 'Veri Yok'})
+    sonuc.sort(key=lambda s: (s['fk'] is None, s['fk']))
+    veri = json_temizle(sonuc)
+    _deger_tarama_cache = {'zaman': datetime.now(), 'veri': veri}
+    return jsonify(veri)
 
 @app.route('/api/takvim')
 def api_takvim():
