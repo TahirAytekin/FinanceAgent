@@ -2568,12 +2568,7 @@ def haber_cek():
     kaynaklar = [
         ("https://www.bloomberght.com/rss",                          "Bloomberg HT"),
         ("https://www.haberturk.com/rss/ekonomi.xml",                "Haberturk"),
-        ("https://borsagundem.com/feed",                             "Borsa Gundem"),
-        ("https://paraanaliz.com/feed/",                             "Para Analiz"),
         ("https://www.sabah.com.tr/rss/ekonomi.xml",                 "Sabah Ekonomi"),
-        ("https://www.dunya.com/feeds/rss",                          "Dunya Gazetesi"),
-        ("https://www.finansgundem.com/rss/haberler.xml",            "Finans Gundem"),
-        ("https://feeds.reuters.com/reuters/businessNews",           "Reuters"),
         ("https://tr.investing.com/rss/news.rss",                    "Investing.com TR"),
         ("https://tr.investing.com/rss/stock_stock_picks.rss",       "Investing.com Hisse"),
         ("https://www.ntv.com.tr/ekonomi.rss",                       "NTV Ekonomi"),
@@ -2583,7 +2578,7 @@ def haber_cek():
     for url, kaynak in kaynaklar:
         try:
             feed = _feedparser.parse(url)
-            for entry in (feed.entries or [])[:3]:
+            for entry in (feed.entries or [])[:4]:
                 baslik = (entry.get('title') or '').strip()
                 if baslik:
                     gruplar.append({
@@ -2718,23 +2713,22 @@ SIRKET_BILGI = {
 }
 
 EKONOMIK_TAKVIM = [
-    # TCMB PPK Faiz Kararları
-    {'tarih':'2026-01-23','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı ve faiz kararı açıklaması','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-03-06','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-04-17','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-05-22','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-07-03','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-08-14','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-09-25','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-11-06','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
-    {'tarih':'2026-12-18','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    # TCMB PPK Faiz Kararları (TCMB'nin resmi 2026 takvimi)
+    {'tarih':'2026-01-22','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı ve faiz kararı açıklaması','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-03-12','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-04-22','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-06-11','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-07-23','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-09-10','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-10-22','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
+    {'tarih':'2026-12-10','baslik':'TCMB PPK Faiz Kararı','aciklama':'Para Politikası Kurulu toplantısı','kategori':'tcmb','onem':'yuksek'},
     # TÜİK TÜFE & ÜFE (aylık enflasyon)
     {'tarih':'2026-01-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Aralık 2025 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-02-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Ocak 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-03-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Şubat 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-04-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Mart 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-05-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Nisan 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
-    {'tarih':'2026-06-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Mayıs 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
+    {'tarih':'2026-06-05','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Mayıs 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-07-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Haziran 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-08-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Temmuz 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-09-03','baslik':'TÜİK TÜFE & ÜFE','aciklama':'Ağustos 2026 enflasyon verileri','kategori':'tuik','onem':'yuksek'},
@@ -2746,15 +2740,15 @@ EKONOMIK_TAKVIM = [
     {'tarih':'2026-06-01','baslik':'TÜİK GSYiH Büyüme (Q1 2026)','aciklama':'2026 birinci çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-09-01','baslik':'TÜİK GSYiH Büyüme (Q2 2026)','aciklama':'2026 ikinci çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
     {'tarih':'2026-11-30','baslik':'TÜİK GSYiH Büyüme (Q3 2026)','aciklama':'2026 üçüncü çeyrek büyüme verisi','kategori':'tuik','onem':'yuksek'},
-    # FED FOMC
-    {'tarih':'2026-01-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı ve karar açıklaması','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-03-19','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-05-07','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-06-18','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-07-30','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-09-17','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-10-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
-    {'tarih':'2026-12-10','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    # FED FOMC (federalreserve.gov resmi 2026 takvimi — karar 2. gun aciklanir)
+    {'tarih':'2026-01-28','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı ve karar açıklaması','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-03-18','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-04-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-06-17','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-07-29','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-09-16','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-10-28','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
+    {'tarih':'2026-12-09','baslik':'FED Faiz Kararı (FOMC)','aciklama':'Federal Açık Piyasa Komitesi toplantısı','kategori':'fed','onem':'orta'},
     # BIST Bilanço Sezonları
     {'tarih':'2026-02-13','baslik':'Bilanço Sezonu Başlangıcı — Q4 2025','aciklama':'BIST şirketleri 2025 yıllık bilanço açıklamaları başlıyor','kategori':'bilanco','onem':'orta'},
     {'tarih':'2026-03-31','baslik':'Bilanço Son Tarihi — Yıllık 2025','aciklama':'2025 yıllık bilanço açıklama son tarihi','kategori':'bilanco','onem':'dusuk'},
