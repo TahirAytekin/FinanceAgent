@@ -264,9 +264,11 @@ def model_db_kaydet(sembol, model, scaler):
         conn.close()
 
 def model_db_yukle(sembol, max_gun=7):
+    """(model, scaler, egitim_tarihi) doner. Model yoksa/bayatsa/ozellik sayisi
+    uyusmuyorsa (None, None, None) doner - cagiran yeniden egitmeli."""
     conn = db_baglan()
     if conn is None:
-        return None, None
+        return None, None, None
     try:
         with conn.cursor() as cur:
             cur.execute("""
@@ -275,24 +277,24 @@ def model_db_yukle(sembol, max_gun=7):
             """, (sembol,))
             row = cur.fetchone()
         if row is None:
-            return None, None
+            return None, None, None
         model_data, scaler_data, ozellik_sayisi, egitim_tarihi = row
-        yas = (datetime.now(timezone.utc) - egitim_tarihi.replace(tzinfo=timezone.utc)
-               if egitim_tarihi.tzinfo is None
-               else datetime.now(timezone.utc) - egitim_tarihi).days
+        if egitim_tarihi.tzinfo is None:
+            egitim_tarihi = egitim_tarihi.replace(tzinfo=timezone.utc)
+        yas = (datetime.now(timezone.utc) - egitim_tarihi).days
         if yas > max_gun:
             print(f"[DB] {sembol} modeli eski ({yas} gun), yeniden egitilecek.")
-            return None, None
+            return None, None, None
         if ozellik_sayisi != len(OZELLIKLER):
             print(f"[DB] {sembol} ozellik sayisi uyusmuyor ({ozellik_sayisi} vs {len(OZELLIKLER)}), yeniden egitilecek.")
-            return None, None
+            return None, None, None
         model  = pickle.loads(zlib.decompress(bytes(model_data)))
         scaler = pickle.loads(zlib.decompress(bytes(scaler_data)))
         print(f"[DB] {sembol} modeli yuklendi ({yas} gun onceki egitim) ✅")
-        return model, scaler
+        return model, scaler, egitim_tarihi
     except Exception as e:
         print(f"[DB] Model yukleme hatasi {sembol}: {e}")
-        return None, None
+        return None, None, None
     finally:
         conn.close()
 
@@ -365,9 +367,21 @@ def track_record_db_oku():
         basari  = kazanan/len(tamamlanan)*100 if tamamlanan else 0
         ort_kar = (sum(float(r['kar_zarar'] or 0) for r in tamamlanan)/len(tamamlanan)
                    if tamamlanan else 0)
+
+        def karar_basarisi(karar_adi):
+            liste = [r for r in tamamlanan if r['karar'] == karar_adi]
+            kazanan_n = sum(1 for r in liste if r['sonuc'] == 'KAZANDI')
+            oran = kazanan_n/len(liste)*100 if liste else 0
+            return round(oran, 1), len(liste)
+
+        basari_al, sayi_al   = karar_basarisi('AL')
+        basari_sat, sayi_sat = karar_basarisi('SAT')
+
         return {
             'toplam':len(rows),'tamamlanan':len(tamamlanan),'kazanan':kazanan,
             'basari':round(basari,1),'ort_kar':round(ort_kar,2),
+            'basari_al':basari_al,'sayi_al':sayi_al,
+            'basari_sat':basari_sat,'sayi_sat':sayi_sat,
             'son_sinyaller':rows[:20],
             'tamamlanan_liste':[{'sembol':r['sembol'],'kar_zarar':r['kar_zarar'],
                                   'sonuc':r['sonuc']} for r in tamamlanan],
@@ -576,6 +590,7 @@ SISTEM_VERISI = {
     'hazir'         : False,
     'kenar'         : {'kripto':[], 'doviz':[], 'emtia':[]},
     'haberler'      : [],
+    'son_model_kontrol': {},
 }
 
 HTML = '''<!DOCTYPE html>
@@ -836,6 +851,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="sh"><div class="sl">Piyasa Rejimi</div></div>
       <div id="rejim-badge" class="rb rb-y">—</div>
       <div class="ss" id="rejim-aciklama">Yükleniyor...</div>
+      <div class="ss" style="opacity:.7">Geriye dönük test: BOGA/AYI sonrası getiri farkı anlamlı değil (p=0.42)</div>
     </div>
     <div class="sc">
       <div class="sh"><div class="sl">Aktif Sinyaller</div></div>
@@ -923,6 +939,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="trs"><div class="trl">Tamamlanan</div><div class="trv" id="tr-tamamlanan">—</div></div>
     <div class="trs"><div class="trl">Başarı Oranı</div><div class="trv" id="tr-basari">—</div><div style="font-size:9px;color:var(--mu);margin-top:2px">3 sınıflı rastgele: ~%33</div></div>
     <div class="trs"><div class="trl">Ort. Kar/Zarar</div><div class="trv" id="tr-ort-kar">—</div></div>
+  </div>
+  <div class="card" style="padding:10px 14px;font-size:12px" id="tr-karar-karnesi">
+    <span style="color:var(--mu)">Karar türüne göre gerçek başarı:</span>
+    <span id="tr-al-basari" style="margin-left:8px"></span>
+    <span id="tr-sat-basari" style="margin-left:8px"></span>
   </div>
   <div class="card">
     <div class="ctit">Kümülatif Performans</div>
@@ -1391,7 +1412,9 @@ function tabloGun(sn){
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
     const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
     const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
-    h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+'</td>'+
+    const egY=s.egitim_yas_gun;
+    const egTxt=egY!=null?'<div style="font-size:9px;color:var(--mu);font-weight:400" title="Modelin son egitildigi tarihten bu yana gecen gun sayisi">Model: '+egY+'g önce</div>':'';
+    h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+egTxt+'</td>'+
       '<td>'+Number(s.fiyat).toFixed(2)+' TL</td>'+
       '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
       '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
@@ -1707,6 +1730,9 @@ function trTabGun(tr){
   tb.textContent=tr.tamamlanan>0?'%'+tr.basari:'-';
   const tk=document.getElementById('tr-ort-kar'); tk.className='trv '+kr;
   tk.textContent=tr.tamamlanan>0?'%'+(tr.ort_kar>0?'+':'')+tr.ort_kar:'-';
+  const alEl=document.getElementById('tr-al-basari'), satEl=document.getElementById('tr-sat-basari');
+  if(alEl) alEl.innerHTML=(tr.sayi_al>0)?'<span class="pill al">POZİTİF</span> %'+tr.basari_al+' ('+tr.sayi_al+' sinyal)':'';
+  if(satEl) satEl.innerHTML=(tr.sayi_sat>0)?'<span class="pill sat">NEGATİF</span> %'+tr.basari_sat+' ('+tr.sayi_sat+' sinyal)':'';
   if(!tr.son_sinyaller||!tr.son_sinyaller.length){
     document.getElementById('track-record-alani').innerHTML='<div class="es">Henuz tamamlanan sinyal yok.</div>';
     const pk=document.getElementById('tr-portfoy-kart'); if(pk) pk.style.display='none';
@@ -1787,8 +1813,12 @@ function kenarGun(kenar){
 function haberGun(haberler){
   let h='';
   haberler.forEach(x=>{
+    let duygu='';
+    if(x.skor!=null){
+      duygu = x.skor>=0.15?' 🟢':x.skor<=-0.15?' 🔴':' 🟡';
+    }
     h+='<div class="sbi"><a class="na" href="'+(x.link||'#')+'" target="_blank" rel="noopener">'+
-      '<div class="nt">'+(x.baslik||'')+'</div>'+
+      '<div class="nt">'+(x.baslik||'')+duygu+'</div>'+
       '<div class="ns">'+(x.kaynak||'')+'</div>'+
       '</a></div>';
   });
@@ -2386,7 +2416,9 @@ function sirketAc(sembol){
         '<span>RSI: <strong>'+Number(s.rsi).toFixed(1)+'</strong></span>'+
         '<span class="gr">Ref. Direnç: <strong>'+Number(s.hedef).toFixed(2)+' TL</strong></span>'+
         '<span class="re">Ref. Destek: <strong>'+Number(s.stop).toFixed(2)+' TL</strong></span>'+
-        '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span></div>';
+        '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span>'+
+        (s.egitim_yas_gun!=null?'<span style="color:var(--mu)">Son eğitim: <strong>'+s.egitim_yas_gun+' gün önce</strong></span>':'')+
+        '</div>';
     }
     h+='<div id="modal-ozet-k">'+ozet+'</div>';
     h+='<div id="modal-fin-k" style="display:none"><div class="es">Yukleniyor...</div></div>';
@@ -2684,6 +2716,7 @@ def hisse_ozel_haberler():
                     'kaynak': f"{h['kaynak']} — {sembol_adi}",
                     'link'  : f"https://news.google.com/search?q={sembol_adi}%20hisse%20borsa&hl=tr",
                     'zaman' : h.get('zaman') or datetime.now(),
+                    'skor'  : h.get('skor', 0.0),
                 })
         except Exception:
             pass
@@ -2696,6 +2729,7 @@ def hisse_ozel_haberler():
                     'kaynak': f"{h['kaynak']} — {sembol_adi}",
                     'link'  : f"https://finance.yahoo.com/quote/{sembol}/news",
                     'zaman' : h.get('zaman') or datetime.now(),
+                    'skor'  : h.get('skor', 0.0),
                 })
         except Exception:
             pass
@@ -2725,6 +2759,7 @@ def haber_cek():
                         'kaynak': kaynak,
                         'link'  : entry.get('link', '#'),
                         'zaman' : _feed_entry_zamani(entry),
+                        'skor'  : None,
                     })
         except:
             pass
@@ -2947,7 +2982,7 @@ def guvenli_sayi(x, default=0):
     except:
         return default
 
-def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
+def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None):
     try:
         ticker    = yf.Ticker(sembol)
         son_fiyat = ticker.fast_info.last_price
@@ -2971,6 +3006,10 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
         else:
             hedef = round(guvenli_sayi(son_fiyat + atr * 2.5), 2)
             stop  = round(guvenli_sayi(son_fiyat - atr * 1.5), 2)
+        egitim_yas_gun = None
+        if egitim_tarihi is not None:
+            et = egitim_tarihi.replace(tzinfo=timezone.utc) if egitim_tarihi.tzinfo is None else egitim_tarihi
+            egitim_yas_gun = (datetime.now(timezone.utc) - et).days
         return {
             'sembol' : sembol,
             'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
@@ -2980,6 +3019,7 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0):
             'guven'  : round(guvenli_sayi(guven), 3),
             'hedef'  : hedef,
             'stop'   : stop,
+            'egitim_yas_gun': egitim_yas_gun,
         }
     except:
         return None
@@ -3057,25 +3097,39 @@ def track_record_oku():
         if len(tamamlanan) == 0:
             return {'toplam':len(df),'tamamlanan':0,'kazanan':0,
                     'basari':0,'ort_kar':0,'tamamlanan_liste':[],
-                    'son_sinyaller':son_sinyaller}
+                    'son_sinyaller':son_sinyaller,
+                    'basari_al':0,'sayi_al':0,'basari_sat':0,'sayi_sat':0}
         kazanan = len(tamamlanan[tamamlanan['sonuc']=='KAZANDI'])
         basari  = kazanan / len(tamamlanan) * 100
         ort_kar = tamamlanan['kar_zarar'].astype(float).mean()
         tamamlanan_liste = (tamamlanan.sort_values('_dt')
                               [['sembol','kar_zarar','sonuc']]
                               .to_dict('records'))
+
+        def karar_basarisi(karar_adi):
+            liste = tamamlanan[tamamlanan['karar'] == karar_adi]
+            kazanan_n = len(liste[liste['sonuc']=='KAZANDI'])
+            oran = kazanan_n/len(liste)*100 if len(liste) else 0
+            return round(oran, 1), len(liste)
+
+        basari_al, sayi_al   = karar_basarisi('AL')
+        basari_sat, sayi_sat = karar_basarisi('SAT')
+
         return {
             'toplam'           : len(df),
             'tamamlanan'       : len(tamamlanan),
             'kazanan'          : kazanan,
             'basari'           : round(basari, 1),
             'ort_kar'          : round(float(ort_kar), 2),
+            'basari_al'        : basari_al, 'sayi_al'  : sayi_al,
+            'basari_sat'       : basari_sat,'sayi_sat' : sayi_sat,
             'son_sinyaller'    : son_sinyaller,
             'tamamlanan_liste' : tamamlanan_liste,
         }
     except:
         return {'toplam':0,'tamamlanan':0,'kazanan':0,
-                'basari':0,'ort_kar':0,'son_sinyaller':[],'tamamlanan_liste':[]}
+                'basari':0,'ort_kar':0,'son_sinyaller':[],'tamamlanan_liste':[],
+                'basari_al':0,'sayi_al':0,'basari_sat':0,'sayi_sat':0}
 
 def sistem_baslat():
     db_tablolari_olustur()
@@ -3093,11 +3147,12 @@ def sistem_baslat():
 
     print("\nModeller yukleniyor / egitiliyor...")
     for s in HISSELER:
-        model, scaler = model_db_yukle(s)
+        model, scaler, egitim_tarihi = model_db_yukle(s)
         if model is not None:
             try:
                 df = veri_hazirla(s)
-                SISTEM_VERISI['modeller'][s] = (model, scaler, df)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+                SISTEM_VERISI['son_model_kontrol'][s] = datetime.now(timezone.utc)
                 print(f"  {s} DB'den yuklendi ✅")
                 time.sleep(1)
                 continue
@@ -3107,7 +3162,9 @@ def sistem_baslat():
             try:
                 print(f"  {s} egitiliyor... (deneme {deneme+1})")
                 model, scaler, df = model_egit(s)
-                SISTEM_VERISI['modeller'][s] = (model, scaler, df)
+                egitim_tarihi = datetime.now(timezone.utc)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+                SISTEM_VERISI['son_model_kontrol'][s] = egitim_tarihi
                 model_db_kaydet(s, model, scaler)
                 print(f"  {s} ✅")
                 break
@@ -3125,9 +3182,29 @@ def sistem_baslat():
             piyasa  = piyasa_bilgisi_cek()
             carpani = piyasa.get('carpani', 1.0)
             sinyaller, grafik_v = [], {}
+            simdi = datetime.now(timezone.utc)
 
-            for s, (model, scaler, df) in SISTEM_VERISI['modeller'].items():
-                sinyal = sinyal_uret(s, model, scaler, df, carpani)
+            for s, (model, scaler, df, egitim_tarihi) in list(SISTEM_VERISI['modeller'].items()):
+                # Process uzun sure ayakta kaldiginda modelin bayatlamasini onlemek
+                # icin, gunde bir kez yas kontrolu tetikle (7 gunden eskiyse yeniden egit).
+                son_kontrol = SISTEM_VERISI['son_model_kontrol'].get(s)
+                if son_kontrol is None or (simdi - son_kontrol) > timedelta(hours=24):
+                    SISTEM_VERISI['son_model_kontrol'][s] = simdi
+                    yeni_model, yeni_scaler, yeni_egitim = model_db_yukle(s)
+                    if yeni_model is None:
+                        try:
+                            print(f"[Yeniden Egitim] {s} icin model yenileniyor...")
+                            yeni_model, yeni_scaler, yeni_df = model_egit(s)
+                            model_db_kaydet(s, yeni_model, yeni_scaler)
+                            model, scaler, df = yeni_model, yeni_scaler, yeni_df
+                            egitim_tarihi = datetime.now(timezone.utc)
+                        except Exception as e:
+                            print(f"[Yeniden Egitim] {s} hatasi: {e}")
+                    else:
+                        model, scaler, egitim_tarihi = yeni_model, yeni_scaler, yeni_egitim
+                    SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+
+                sinyal = sinyal_uret(s, model, scaler, df, carpani, egitim_tarihi)
                 if sinyal:
                     sinyaller.append(sinyal)
                 try:
