@@ -3444,20 +3444,23 @@ def api_finans(sembol):
         print(f"[FINANS] {sembol}: {e}")
         return jsonify({'error': str(e)}), 500
 
-_deger_tarama_cache = {'zaman': None, 'veri': None}
+_deger_tarama_cache = {}   # sembol -> (datetime, satir)
 
 @app.route('/api/deger-taramasi')
 def api_deger_taramasi():
     """ML tahminine dayanmayan, saf F/K-PD/DD-Temettu bazli bir referans taramasi.
-    24 saatlik onbellek - /api/finans ile ayni desen."""
+    /api/finans ile ayni desen: sembol basina 24 saatlik onbellek. Basarisiz
+    (Veri Yok) sonuclar ONBELLEKLENMEZ ki gecici bir hata 24 saat kilitlenmesin -
+    bir sonraki istekte otomatik tekrar denenir."""
     global _deger_tarama_cache
-    if _deger_tarama_cache['zaman'] is not None:
-        gecen = (datetime.now() - _deger_tarama_cache['zaman']).total_seconds()
-        if gecen < 86400:
-            return jsonify(_deger_tarama_cache['veri'])
     sonuc = []
     for sembol_is in HISSELER:
         sembol = sembol_is.replace('.IS', '')
+        if sembol in _deger_tarama_cache:
+            ts, satir = _deger_tarama_cache[sembol]
+            if (datetime.now() - ts).total_seconds() < 86400:
+                sonuc.append(satir)
+                continue
         try:
             info = yf.Ticker(sembol_is).info or {}
             fk    = info.get('trailingPE')
@@ -3471,18 +3474,17 @@ def api_deger_taramasi():
                 etiket = 'Normal'
             else:
                 etiket = 'Pahalı'
-            sonuc.append({
-                'sembol': sembol, 'fk': fk, 'pd_dd': pd_dd,
-                'temettu': temettu, 'etiket': etiket,
-            })
+            satir = {'sembol': sembol, 'fk': fk, 'pd_dd': pd_dd,
+                     'temettu': temettu, 'etiket': etiket}
+            if fk is not None:
+                _deger_tarama_cache[sembol] = (datetime.now(), satir)
+            sonuc.append(satir)
         except Exception as e:
             print(f"[DEGER TARAMASI] {sembol}: {e}")
             sonuc.append({'sembol': sembol, 'fk': None, 'pd_dd': None,
                            'temettu': None, 'etiket': 'Veri Yok'})
     sonuc.sort(key=lambda s: (s['fk'] is None, s['fk']))
-    veri = json_temizle(sonuc)
-    _deger_tarama_cache = {'zaman': datetime.now(), 'veri': veri}
-    return jsonify(veri)
+    return jsonify(json_temizle(sonuc))
 
 @app.route('/api/takvim')
 def api_takvim():
