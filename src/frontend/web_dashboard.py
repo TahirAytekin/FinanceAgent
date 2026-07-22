@@ -1145,6 +1145,7 @@ async function hesapGirisBasarili(d){
     user_id:d.user.id, email:d.user.email, expires_at:Date.now()+d.expires_in*1000};
   const eskiSid=SID;
   _authYaz(auth);
+  _lsPortfoyKaydet([]); _lsAlarmlarKaydet([]);
   hesapUIGuncelle();
   await hesabaVeriTasi(auth.user_id);
   portfoyGun(); alarmGun(); alarm2Gun();
@@ -1188,6 +1189,7 @@ async function hesapGirisYap(){
 
 function hesapCikisYap(){
   _authSil();
+  _lsPortfoyKaydet([]); _lsAlarmlarKaydet([]);
   hesapUIGuncelle();
   portfoyGun(); alarmGun(); alarm2Gun();
 }
@@ -1771,7 +1773,7 @@ function portfoyGun(){
   fetchYetkili('/api/portfoy/'+aktifSid())
     .then(r=>r.json())
     .then(srv=>{
-      if(srv&&srv.length>0){_lsPortfoyKaydet(srv);_portfoyRender(srv);}
+      if(Array.isArray(srv)){_lsPortfoyKaydet(srv);_portfoyRender(srv);}
     })
     .catch(()=>{});
 }
@@ -1865,7 +1867,7 @@ function alarmGun(){
   fetchYetkili('/api/alarmlar/'+aktifSid())
     .then(r=>r.json())
     .then(srv=>{
-      if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarmRender(srv);}
+      if(Array.isArray(srv)){_lsAlarmlarKaydet(srv);_alarmRender(srv);}
     })
     .catch(()=>{});
 }
@@ -1987,7 +1989,7 @@ function alarm2Sil(key){
 function alarm2Gun(){
   const local=_lsAlarmlar(); _alarm2Render(local);
   fetchYetkili('/api/alarmlar/'+aktifSid()).then(r=>r.json()).then(srv=>{
-    if(srv&&srv.length>0){_lsAlarmlarKaydet(srv);_alarm2Render(srv);}
+    if(Array.isArray(srv)){_lsAlarmlarKaydet(srv);_alarm2Render(srv);}
   }).catch(()=>{});
 }
 
