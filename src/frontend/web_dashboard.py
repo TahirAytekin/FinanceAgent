@@ -9,6 +9,9 @@ import pickle
 import zlib
 import threading
 import time
+import smtplib
+import requests
+from email.mime.text import MIMEText
 from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
@@ -64,7 +67,70 @@ def db_baglan():
 SUPABASE_URL        = os.environ.get('SUPABASE_URL', '')
 SUPABASE_ANON_KEY    = os.environ.get('SUPABASE_ANON_KEY', '')
 SUPABASE_JWT_SECRET  = os.environ.get('SUPABASE_JWT_SECRET')  # legacy HS256 yedek yol icin
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 _jwks_client = None
+
+# ─── E-posta (alarm bildirimi) ──────────────────────────
+GMAIL_ADRES  = os.environ.get('GMAIL_ADRES', 'tahir.aytekin72@gmail.com')
+GMAIL_SIFRE  = os.environ.get('GMAIL_SIFRE')
+
+def kullanici_email_bul(user_id):
+    """Verilen session_id gercekten kayitli bir Supabase kullanicisiysa email'ini
+    doner. Anonim SID'ler icin Supabase 404 dondurur -> None (sessizce atlanir)."""
+    if not (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and user_id):
+        return None
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+            headers={
+                'apikey': SUPABASE_SERVICE_ROLE_KEY,
+                'Authorization': f'Bearer {SUPABASE_SERVICE_ROLE_KEY}',
+            },
+            timeout=8,
+        )
+        if r.status_code == 200:
+            return r.json().get('email')
+        return None
+    except Exception as e:
+        print(f"[Alarm Email] Kullanici sorgu hatasi: {e}")
+        return None
+
+def alarm_email_gonder(alici_email, sembol, mesaj):
+    """Tetiklenen alarmi kullaniciya e-posta ile bildirir. Basarisizlik arka plan
+    thread'ini durdurmasin diye tum hatalar burada yutulur."""
+    if not (GMAIL_ADRES and GMAIL_SIFRE and alici_email):
+        return False
+    try:
+        govde = (
+            f"Merhaba,\n\n{mesaj}\n\n"
+            "Bu bildirim LIDYA platformundaki alarm ayarlarınıza göre gönderilmiştir. "
+            "Deneyseldir, yatırım tavsiyesi değildir.\n\nLIDYA Borsa Analiz Platformu"
+        )
+        msg = MIMEText(govde, 'plain', 'utf-8')
+        msg['Subject'] = f"LIDYA Alarm: {sembol}"
+        msg['From']    = GMAIL_ADRES
+        msg['To']      = alici_email
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as srv:
+            srv.login(GMAIL_ADRES, GMAIL_SIFRE)
+            srv.sendmail(GMAIL_ADRES, alici_email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[Alarm Email] Gonderim hatasi: {e}")
+        return False
+
+def _alarm_mesaji(sembol, yon, fiyat):
+    if yon == 'rsi_ob':
+        return f"{sembol} RSI aşırı alım bölgesine girdi!"
+    elif yon == 'rsi_os':
+        return f"{sembol} RSI aşırı satım bölgesinde!"
+    elif yon == 'sinyal_al':
+        return f"{sembol} göstergesi pozitife döndü (deneysel, yatırım tavsiyesi değildir)."
+    elif yon == 'sinyal_sat':
+        return f"{sembol} göstergesi negatife döndü (deneysel, yatırım tavsiyesi değildir)."
+    else:
+        yon_metin   = 'yükseldi' if yon == 'above' else 'düştü'
+        fiyat_metin = f"{fiyat:.2f} TL" if fiyat is not None else '-'
+        return f"{sembol} -> {fiyat_metin} ({yon_metin})"
 
 def _jwks_al():
     global _jwks_client
@@ -448,10 +514,11 @@ def alarmlar_db_kontrol(sinyaller):
     conn = db_baglan()
     if conn is None:
         return
+    yeni_tetiklenenler = []
     try:
         fm = {s['sembol'].replace('.IS',''): s for s in sinyaller}
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT id,sembol,yon,fiyat FROM lidya_alarmlar WHERE tetiklendi=FALSE")
+            cur.execute("SELECT id,sembol,yon,fiyat,session_id FROM lidya_alarmlar WHERE tetiklendi=FALSE")
             for alarm in cur.fetchall():
                 sinyal = fm.get(alarm['sembol'])
                 if sinyal is None:
@@ -476,11 +543,26 @@ def alarmlar_db_kontrol(sinyaller):
                 if hit:
                     cur.execute("UPDATE lidya_alarmlar SET tetiklendi=TRUE WHERE id=%s",
                                 (alarm['id'],))
+                    yeni_tetiklenenler.append({
+                        'sembol'    : alarm['sembol'],
+                        'yon'       : yon,
+                        'fiyat'     : g,
+                        'session_id': alarm['session_id'],
+                    })
         conn.commit()
     except Exception as e:
         print(f"[DB] Alarm kontrol hatasi: {e}")
     finally:
         conn.close()
+
+    for a in yeni_tetiklenenler:
+        try:
+            email = kullanici_email_bul(a['session_id'])
+            if email:
+                mesaj = _alarm_mesaji(a['sembol'], a['yon'], a['fiyat'])
+                alarm_email_gonder(email, a['sembol'], mesaj)
+        except Exception as e:
+            print(f"[Alarm Email] Islem hatasi: {e}")
 # ───────────────────────────────────────────────────────
 
 app = Flask(__name__)
