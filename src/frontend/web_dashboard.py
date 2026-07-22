@@ -731,7 +731,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="tb" onclick="tabAc('portfoy',this)">Portföy</button>
   <button class="tb" onclick="tabAc('takvim',this)">Takvim</button>
   <button class="tb" onclick="tabAc('alarmlar',this)">Alarmlar</button>
-  <button class="tb" onclick="tabAc('hesap',this)">Hesap</button>
 </nav>
 
 <div class="uyari">⚠ Bu platform <b>deneyseldir</b>. Gösterilen veriler <b>yatırım tavsiyesi değildir</b> — model çıktılarının geçmiş gerçek başarı oranını <b>Track Record</b> sekmesinde görebilirsiniz.</div>
@@ -897,11 +896,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div id="alarm-listesi"><div class="es">Henüz alarm yok.</div></div>
   </div>
-  <div class="card" id="hesap-nudge">
-    <div class="ctit">Verilerinizi Kalıcı Yapın</div>
-    <p style="font-size:12px;color:var(--mu);margin-bottom:10px">Portföyünüzü ve alarmlarınızı cihazlar arası kalıcı hale getirmek için bir hesap oluşturun.</p>
-    <button class="ba" onclick="tabAc('hesap', null)">Hesap Oluştur / Giriş Yap</button>
-  </div>
 </div>
 </div>
 
@@ -1042,10 +1036,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
     Alarmlar
   </button>
-  <button class="bni" id="bni-hesap" onclick="tabMob('hesap',this)">
-    <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-    Hesap
-  </button>
 </nav>
 
 <div id="sirket-modal" class="modal-bg" style="display:none" onclick="if(event.target===this)sirketKapat()">
@@ -1136,18 +1126,15 @@ function hesapUIGuncelle(){
   const a=_authOku();
   const girisli=document.getElementById('hesap-cikis-yapilmis');
   const girissiz=document.getElementById('hesap-giris-yapilmamis');
-  const nudge=document.getElementById('hesap-nudge');
   const cta=document.getElementById('hesap-cta');
   if(a){
     if(girisli) girisli.style.display='';
     if(girissiz) girissiz.style.display='none';
-    if(nudge) nudge.style.display='none';
     const e=document.getElementById('hesap-eposta'); if(e) e.textContent=a.email;
     if(cta) cta.textContent='Hesabım';
   }else{
     if(girisli) girisli.style.display='none';
     if(girissiz) girissiz.style.display='';
-    if(nudge) nudge.style.display='';
     if(cta) cta.textContent='Kayıt Ol';
   }
 }
