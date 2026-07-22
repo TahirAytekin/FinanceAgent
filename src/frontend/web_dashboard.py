@@ -357,7 +357,7 @@ def track_record_db_oku():
                 SELECT sembol, karar, fiyat_giris, fiyat_cikis,
                        hedef, stop, kar_zarar, sonuc,
                        TO_CHAR(zaman,'DD.MM.YYYY HH24:MI') as zaman
-                FROM lidya_track_record ORDER BY zaman DESC
+                FROM lidya_track_record ORDER BY lidya_track_record.zaman DESC
             """)
             rows = [dict(r) for r in cur.fetchall()]
         if not rows:
