@@ -1919,7 +1919,7 @@ function _portfoyRender(p){
   const cesitEtiket=enBuyukPay>60?'Düşük çeşitlendirme':enBuyukPay>40?'Orta çeşitlendirme':'İyi çeşitlendirme';
   if(oz){oz.style.display='flex';oz.innerHTML='<span>Maliyet: <strong>'+totM.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Piyasa D.: <strong>'+totD.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL</strong></span><span>Net K/Z: <strong class="'+nr+'">'+(nkz>=0?'+':'')+nkz.toLocaleString('tr-TR',{maximumFractionDigits:0})+' TL (%'+(nkzp>=0?'+':'')+nkzp.toFixed(1)+')</strong></span>'+
     '<span>Çeşitlendirme: <strong class="'+cesitRenk+'">%'+enBuyukPay.toFixed(0)+' '+enBuyukSek+' — '+cesitEtiket+'</strong></span>'+
-    '<span style="color:var(--mu);font-size:11px">BIST hisselerinde alım-satım kazancı stopajı %0\'dır (Geçici 67) — net kâr/zararınız yukarıdaki gibidir.</span>';}
+    '<span style="color:var(--mu);font-size:11px">BIST hisselerinde alım-satım kazancına uygulanan stopaj oranı sıfırdır (Geçici 67) — net kâr/zararınız yukarıdaki gibidir.</span>';}
   portfoyGrafikleriCiz(p);
 }
 
