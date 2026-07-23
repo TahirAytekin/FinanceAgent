@@ -383,14 +383,48 @@ def track_record_db_oku():
             'basari_al':basari_al,'sayi_al':sayi_al,
             'basari_sat':basari_sat,'sayi_sat':sayi_sat,
             'son_sinyaller':rows[:20],
+            # tamamlanan 'rows' ile ayni sirada (en yeni once) geldigi icin, kumulatif
+            # performans grafiginin soldan saga kronolojik (en eski->en yeni) okunmasi
+            # icin burada ters cevriliyor - son_sinyaller'a dokunulmuyor, o hala yeni-once.
             'tamamlanan_liste':[{'sembol':r['sembol'],'kar_zarar':r['kar_zarar'],
-                                  'sonuc':r['sonuc']} for r in tamamlanan],
+                                  'sonuc':r['sonuc']} for r in reversed(tamamlanan)],
         }
     except Exception as e:
         print(f"[DB] Track record okuma hatasi: {e}")
         return None
     finally:
         conn.close()
+
+def _triple_barrier_sonucu(sembol, karar, giris_tarihi, hedef, stop):
+    """3 gunluk pencerede gercek gunluk High/Low ile hedef/stop'un hangisinin
+    once vuruldugunu kontrol eder. (cikis_fiyati, sonuc) veya bulunamazsa
+    (None, None) doner - cagiran zaman-bazli eski mantiga geri donmeli."""
+    if not hedef or not stop:
+        return None, None
+    try:
+        if giris_tarihi.tzinfo is not None:
+            giris_tarihi = giris_tarihi.replace(tzinfo=None)
+        bitis_tarihi = giris_tarihi + timedelta(days=4)  # end dislayici, 3 tam is gunu icin pay
+        df = yf.Ticker(sembol).history(start=giris_tarihi, end=bitis_tarihi, interval='1d')
+        if df.empty:
+            return None, None
+        hedef, stop = float(hedef), float(stop)
+        for _, gun in df.iterrows():
+            hi, lo = float(gun['High']), float(gun['Low'])
+            if karar == 'AL':
+                hedef_vuruldu, stop_vuruldu = hi >= hedef, lo <= stop
+            else:
+                hedef_vuruldu, stop_vuruldu = lo <= hedef, hi >= stop
+            if stop_vuruldu:
+                # Ayni gun icinde ikisi de vurulmus gorunuyorsa, gunluk veriden
+                # hangisinin once oldugu bilinemez - temkinli davranip kaybi esas al.
+                return stop, 'KAYBETTI'
+            if hedef_vuruldu:
+                return hedef, 'KAZANDI'
+        return None, None
+    except Exception as e:
+        print(f"[Track Record] {sembol} triple-barrier hatasi: {e}")
+        return None, None
 
 def sinyallerden_track_record_guncelle():
     conn = db_baglan()
@@ -399,27 +433,39 @@ def sinyallerden_track_record_guncelle():
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT id, sembol, karar, fiyat_giris
+                SELECT id, sembol, karar, fiyat_giris, hedef, stop, zaman
                 FROM lidya_track_record
                 WHERE sonuc='Bekliyor' AND zaman < NOW() - INTERVAL '3 days'
             """)
             bekleyenler = cur.fetchall()
             for b in bekleyenler:
-                cur.execute("""
-                    SELECT fiyat FROM lidya_sinyaller
-                    WHERE sembol=%s ORDER BY zaman DESC LIMIT 1
-                """, (b['sembol'],))
-                son = cur.fetchone()
-                if not son or not b['fiyat_giris']:
+                if not b['fiyat_giris']:
                     continue
-                cikis = float(son['fiyat'])
                 giris = float(b['fiyat_giris'])
                 if giris == 0:
                     continue
+
+                cikis, sonuc = _triple_barrier_sonucu(
+                    b['sembol'], b['karar'], b['zaman'], b['hedef'], b['stop'])
+
+                if sonuc is None:
+                    # Ne hedef ne stop 3 gun icinde vurulmadi (veya veri cekilemedi) -
+                    # zaman-bazli cikisa don: 3. gunun en son bilinen fiyatiyla kiyasla.
+                    cur.execute("""
+                        SELECT fiyat FROM lidya_sinyaller
+                        WHERE sembol=%s ORDER BY zaman DESC LIMIT 1
+                    """, (b['sembol'],))
+                    son = cur.fetchone()
+                    if not son:
+                        continue
+                    cikis = float(son['fiyat'])
+                    sonuc = None  # asagida hesaplanacak
+
                 kz = (cikis - giris) / giris * 100
                 if b['karar'] == 'SAT':
                     kz = -kz
-                sonuc = 'KAZANDI' if kz > 0 else 'KAYBETTI'
+                if sonuc is None:
+                    sonuc = 'KAZANDI' if kz > 0 else 'KAYBETTI'
                 cur.execute("""
                     UPDATE lidya_track_record
                     SET fiyat_cikis=%s, kar_zarar=%s, sonuc=%s WHERE id=%s
