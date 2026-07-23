@@ -3644,6 +3644,29 @@ def sistem_baslat():
             sinyaller, grafik_v = [], {}
             simdi = datetime.now(timezone.utc)
 
+            # Acilis sirasinda gecici bir ag/veri hatasi yuzunden 3 denemede de
+            # egitilemeyen bir hisse, sadece bu dict'e hic girmedigi icin
+            # asagidaki dongude sonsuza kadar atlanip Sinyaller/Grafik'te hic
+            # gorunmuyordu (kalici bir "kayip hisse" durumu). Her dongude
+            # eksik olanlari tekrar denemek bunu kendiliginden onarir.
+            for s in HISSELER:
+                if s in SISTEM_VERISI['modeller']:
+                    continue
+                try:
+                    print(f"[Onarim] {s} modelde eksik, tekrar egitiliyor...")
+                    m_model, m_scaler, m_egitim, m_ornek, m_dogruluk = model_db_yukle(s)
+                    if m_model is None:
+                        m_model, m_scaler, m_df, m_ornek, m_dogruluk = model_egit(s)
+                        m_egitim = datetime.now(timezone.utc)
+                        model_db_kaydet(s, m_model, m_scaler, m_ornek, m_dogruluk)
+                    else:
+                        m_df = veri_hazirla(s)
+                    SISTEM_VERISI['modeller'][s] = (m_model, m_scaler, m_df, m_egitim, m_ornek, m_dogruluk)
+                    SISTEM_VERISI['son_model_kontrol'][s] = simdi
+                    print(f"[Onarim] {s} basariyla eklendi ✅")
+                except Exception as e:
+                    print(f"[Onarim] {s} yine basarisiz, bir sonraki dongude tekrar denenecek: {e}")
+
             for s, (model, scaler, df, egitim_tarihi, ornek_sayisi, test_dogruluk) in list(SISTEM_VERISI['modeller'].items()):
                 # Process uzun sure ayakta kaldiginda modelin bayatlamasini onlemek
                 # icin, gunde bir kez yas kontrolu tetikle (7 gunden eskiyse yeniden egit).
