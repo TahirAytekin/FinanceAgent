@@ -10,6 +10,7 @@ import zlib
 import json
 import threading
 import time
+import socket
 import smtplib
 import requests
 from email.mime.text import MIMEText
@@ -51,6 +52,12 @@ HISSELER   = ["AKBNK.IS", "GARAN.IS", "YKBNK.IS",
 GUNCELLEME = 300
 PORT       = int(os.environ.get('PORT', 5000))
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# feedparser (haber_cek/google_news_rss/yahoo_news_cek) urllib uzerinden agdan
+# cekiyor ve varsayilan olarak SURESIZ bekleyebiliyor - tek bir yavas/yanit
+# vermeyen kaynak, ana sinyal dongusunu (tek thread) tamamen kilitleyip
+# sinyaller/track record/alarmlar dahil her seyi donduruyordu. Global soket
+# zaman asimi bu turden askidaki ag cagrilarina bir ust sinir koyar.
+socket.setdefaulttimeout(10)
 # ───────────────────────────────────────────────────────
 
 # ─── Veritabani ────────────────────────────────────────
@@ -682,7 +689,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tb.active{color:var(--ac);border-bottom-color:var(--ac);}
 .tp{display:none;} .tp.active{display:block;}
 #tab-hesap.active{display:flex !important;position:fixed;inset:0;z-index:500;background:rgba(7,5,14,.86);align-items:center;justify-content:center;padding:20px;overflow-y:auto;}
-#tab-hesap .con{max-width:420px;width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.55);margin:auto;}
+#tab-hesap .con{max-width:900px;width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.55);margin:auto;padding:0;display:flex;overflow:hidden;min-height:0;}
+.gate-sol{flex:1 1 46%;background:linear-gradient(150deg,#1a1030 0%,#2b1240 45%,#3d1030 100%);padding:40px 34px;display:flex;flex-direction:column;justify-content:center;gap:22px;position:relative;overflow:hidden;}
+.gate-sol::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 25% 15%,rgba(167,139,250,.35),transparent 60%),radial-gradient(circle at 85% 85%,rgba(236,72,153,.28),transparent 55%);pointer-events:none;}
+.gate-marka{display:flex;align-items:center;gap:12px;position:relative;z-index:1;}
+.gate-baslik{font-size:25px;font-weight:800;color:#fff;line-height:1.3;position:relative;z-index:1;}
+.gate-altbaslik{font-size:12px;color:rgba(255,255,255,.68);line-height:1.6;position:relative;z-index:1;margin-top:-10px;}
+.gate-ozellikler{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1;}
+.gate-ozellik{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 13px;}
+.gate-ozellik-t{font-size:12.5px;font-weight:700;color:#fff;margin-bottom:3px;}
+.gate-ozellik-a{font-size:11px;color:rgba(255,255,255,.68);line-height:1.5;}
+.gate-sag{flex:1 1 54%;padding:36px 34px;display:flex;flex-direction:column;justify-content:center;}
+@media(max-width:720px){
+  #tab-hesap .con{flex-direction:column;max-width:440px;}
+  .gate-sol{padding:26px 26px 20px;gap:14px;}
+  .gate-baslik{font-size:20px;}
+  .gate-altbaslik{margin-top:-6px;}
+  .gate-ozellikler{display:none;}
+  .gate-sag{padding:22px 26px 28px;}
+}
 #hesap-kutlama{display:none;position:fixed;inset:0;z-index:600;background:linear-gradient(135deg,rgba(167,139,250,.97) 0%,rgba(236,72,153,.97) 100%);align-items:center;justify-content:center;text-align:center;padding:20px;cursor:pointer;}
 #hesap-kutlama.open{display:flex;}
 #hesap-kutlama-baslik{font-size:clamp(28px,6vw,52px);font-weight:800;color:#0c0a17;line-height:1.25;text-shadow:0 2px 20px rgba(255,255,255,.3);}
@@ -1119,6 +1144,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <!-- TAB: Hesap -->
 <div id="tab-hesap" class="tp">
 <div class="con">
+  <div class="gate-sol">
+    <div class="gate-marka">
+      <svg width="46" height="46" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="bg2" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="#a78bfa"/>
+            <stop offset="100%" stop-color="#ec4899"/>
+          </linearGradient>
+        </defs>
+        <rect x="1"  y="27" width="11" height="14" rx="3" fill="url(#bg2)" opacity="0.55"/>
+        <rect x="16" y="18" width="11" height="23" rx="3" fill="url(#bg2)" opacity="0.78"/>
+        <rect x="31" y="7"  width="11" height="34" rx="3" fill="url(#bg2)"/>
+      </svg>
+      <div>
+        <div class="brand" style="font-size:22px">LIDYA</div>
+        <div class="brand-sub">Borsa Analiz Platformu</div>
+      </div>
+    </div>
+    <div class="gate-baslik">Tahmin değil, şeffaflık.</div>
+    <div class="gate-altbaslik">Gerçek geçmiş performans, temel analiz ve fiyat takibi — hepsi tek platformda, abartısız.</div>
+    <div class="gate-ozellikler">
+      <div class="gate-ozellik">
+        <div class="gate-ozellik-t">📊 Şeffaf Track Record</div>
+        <div class="gate-ozellik-a">Sinyallerin geçmiş başarı oranını saklamadan, olduğu gibi gösteririz.</div>
+      </div>
+      <div class="gate-ozellik">
+        <div class="gate-ozellik-t">🔍 ML'siz Değer Taraması</div>
+        <div class="gate-ozellik-a">F/K ve PD/DD gibi gerçek temel verilerle basit, iddiasız bir tarama.</div>
+      </div>
+      <div class="gate-ozellik">
+        <div class="gate-ozellik-t">🔔 Anlık Fiyat Alarmları</div>
+        <div class="gate-ozellik-a">Takip ettiğiniz seviyeye ulaşınca anında e-posta ile haberdar olun.</div>
+      </div>
+    </div>
+  </div>
+  <div class="gate-sag">
   <div id="hesap-cikis-yapilmis" class="card" style="display:none">
     <div class="ctit">Hesabım</div>
     <div style="font-size:13px;color:var(--tx);margin-bottom:12px">Giriş yapıldı: <strong id="hesap-eposta"></strong></div>
@@ -1140,6 +1201,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div style="border-top:1px solid var(--bd);margin-top:14px;padding-top:12px;text-align:center">
       <button class="ba" style="background:none;color:var(--mu);border:none;font-size:11px;text-decoration:underline" onclick="misafirGirisiYap()">Misafir olarak devam et</button>
     </div>
+  </div>
   </div>
 </div>
 </div>
@@ -2171,16 +2233,25 @@ function takFiltre(tur,btn){
   takvimRender();
 }
 
+function _tarihYerel(s){
+  // 'YYYY-MM-DD' bicimini TARAYICININ YEREL saat diliminde gece yarisi olarak
+  // ayristirir. new Date('YYYY-MM-DD') bunun yerine UTC gece yarisi doner -
+  // UTC'nin ilerisindeki saat dilimlerinde (ör. Turkiye, UTC+3) bugunun
+  // etkinligi hep "Yarin" gibi gorunmesine neden oluyordu.
+  const p=s.split('-').map(Number);
+  return new Date(p[0], p[1]-1, p[2]);
+}
+
 function takvimRender(){
   const el=document.getElementById('takvim-listesi');
   if(!el) return;
   const bugun=new Date(); bugun.setHours(0,0,0,0);
   const fil=_takFiltre==='hepsi'?_takvimVeri:_takvimVeri.filter(e=>e.kategori===_takFiltre);
-  const gelecek=fil.filter(e=>new Date(e.tarih)>=bugun);
+  const gelecek=fil.filter(e=>_tarihYerel(e.tarih)>=bugun);
   const sonEl=document.getElementById('tak-sonraki');
   if(gelecek.length&&sonEl){
     const s=gelecek[0];
-    const fark=Math.ceil((new Date(s.tarih)-bugun)/86400000);
+    const fark=Math.ceil((_tarihYerel(s.tarih)-bugun)/86400000);
     sonEl.textContent=fark===0?'Bugün: '+s.baslik:(fark===1?'Yarın':fark+' gün sonra')+': '+s.baslik;
   } else if(sonEl) sonEl.textContent='';
   if(!fil.length){el.innerHTML='<div class="es">Bu kategoride etkinlik yok.</div>';return;}
@@ -2190,7 +2261,7 @@ function takvimRender(){
   const ayAd=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
   let h='';
   fil.forEach(ev=>{
-    const d=new Date(ev.tarih);
+    const d=_tarihYerel(ev.tarih);
     const gecti=d<bugun;
     const bugunmu=d.getTime()===bugun.getTime();
     const fark=Math.ceil((d-bugun)/86400000);
