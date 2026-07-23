@@ -7,6 +7,7 @@ import math
 import os
 import pickle
 import zlib
+import json
 import threading
 import time
 import smtplib
@@ -15,6 +16,7 @@ from email.mime.text import MIMEText
 from datetime import datetime, timezone, timedelta
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
@@ -201,6 +203,8 @@ def db_tablolari_olustur():
                 ozellik_sayisi INTEGER,
                 egitim_tarihi TIMESTAMPTZ DEFAULT NOW()
             );
+            ALTER TABLE lidya_modeller ADD COLUMN IF NOT EXISTS ornek_sayisi INTEGER;
+            ALTER TABLE lidya_modeller ADD COLUMN IF NOT EXISTS test_dogruluk FLOAT;
             CREATE TABLE IF NOT EXISTS lidya_sinyaller (
                 id BIGSERIAL PRIMARY KEY,
                 sembol VARCHAR(20), fiyat FLOAT, degisim FLOAT,
@@ -216,6 +220,7 @@ def db_tablolari_olustur():
                 sonuc VARCHAR(20) DEFAULT 'Bekliyor',
                 zaman TIMESTAMPTZ DEFAULT NOW()
             );
+            ALTER TABLE lidya_track_record ADD COLUMN IF NOT EXISTS etkili_gostergeler TEXT;
             CREATE TABLE IF NOT EXISTS lidya_portfoy (
                 id BIGSERIAL PRIMARY KEY,
                 session_id VARCHAR(64), sembol VARCHAR(20),
@@ -238,7 +243,7 @@ def db_tablolari_olustur():
     finally:
         conn.close()
 
-def model_db_kaydet(sembol, model, scaler):
+def model_db_kaydet(sembol, model, scaler, ornek_sayisi=None, test_dogruluk=None):
     conn = db_baglan()
     if conn is None:
         return
@@ -248,14 +253,16 @@ def model_db_kaydet(sembol, model, scaler):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO lidya_modeller
-                    (sembol, model_data, scaler_data, ozellik_sayisi, egitim_tarihi)
-                VALUES (%s,%s,%s,%s,NOW())
+                    (sembol, model_data, scaler_data, ozellik_sayisi, egitim_tarihi, ornek_sayisi, test_dogruluk)
+                VALUES (%s,%s,%s,%s,NOW(),%s,%s)
                 ON CONFLICT (sembol) DO UPDATE SET
                     model_data=EXCLUDED.model_data,
                     scaler_data=EXCLUDED.scaler_data,
                     ozellik_sayisi=EXCLUDED.ozellik_sayisi,
-                    egitim_tarihi=NOW()
-            """, (sembol, psycopg2.Binary(mb), psycopg2.Binary(sb), len(OZELLIKLER)))
+                    egitim_tarihi=NOW(),
+                    ornek_sayisi=EXCLUDED.ornek_sayisi,
+                    test_dogruluk=EXCLUDED.test_dogruluk
+            """, (sembol, psycopg2.Binary(mb), psycopg2.Binary(sb), len(OZELLIKLER), ornek_sayisi, test_dogruluk))
         conn.commit()
         print(f"[DB] {sembol} modeli kaydedildi.")
     except Exception as e:
@@ -264,37 +271,38 @@ def model_db_kaydet(sembol, model, scaler):
         conn.close()
 
 def model_db_yukle(sembol, max_gun=7):
-    """(model, scaler, egitim_tarihi) doner. Model yoksa/bayatsa/ozellik sayisi
-    uyusmuyorsa (None, None, None) doner - cagiran yeniden egitmeli."""
+    """(model, scaler, egitim_tarihi, ornek_sayisi, test_dogruluk) doner. Model
+    yoksa/bayatsa/ozellik sayisi uyusmuyorsa (None, None, None, None, None) doner
+    - cagiran yeniden egitmeli."""
     conn = db_baglan()
     if conn is None:
-        return None, None, None
+        return None, None, None, None, None
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT model_data, scaler_data, ozellik_sayisi, egitim_tarihi
+                SELECT model_data, scaler_data, ozellik_sayisi, egitim_tarihi, ornek_sayisi, test_dogruluk
                 FROM lidya_modeller WHERE sembol=%s
             """, (sembol,))
             row = cur.fetchone()
         if row is None:
-            return None, None, None
-        model_data, scaler_data, ozellik_sayisi, egitim_tarihi = row
+            return None, None, None, None, None
+        model_data, scaler_data, ozellik_sayisi, egitim_tarihi, ornek_sayisi, test_dogruluk = row
         if egitim_tarihi.tzinfo is None:
             egitim_tarihi = egitim_tarihi.replace(tzinfo=timezone.utc)
         yas = (datetime.now(timezone.utc) - egitim_tarihi).days
         if yas > max_gun:
             print(f"[DB] {sembol} modeli eski ({yas} gun), yeniden egitilecek.")
-            return None, None, None
+            return None, None, None, None, None
         if ozellik_sayisi != len(OZELLIKLER):
             print(f"[DB] {sembol} ozellik sayisi uyusmuyor ({ozellik_sayisi} vs {len(OZELLIKLER)}), yeniden egitilecek.")
-            return None, None, None
+            return None, None, None, None, None
         model  = pickle.loads(zlib.decompress(bytes(model_data)))
         scaler = pickle.loads(zlib.decompress(bytes(scaler_data)))
         print(f"[DB] {sembol} modeli yuklendi ({yas} gun onceki egitim) ✅")
-        return model, scaler, egitim_tarihi
+        return model, scaler, egitim_tarihi, ornek_sayisi, test_dogruluk
     except Exception as e:
         print(f"[DB] Model yukleme hatasi {sembol}: {e}")
-        return None, None, None
+        return None, None, None, None, None
     finally:
         conn.close()
 
@@ -335,12 +343,14 @@ def track_record_db_ekle(sinyaller):
                 """, (s['sembol'], s['karar']))
                 if cur.fetchone():
                     continue
+                etkili = s.get('etkili_gostergeler')
                 cur.execute("""
                     INSERT INTO lidya_track_record
-                        (sembol, karar, fiyat_giris, hedef, stop, sonuc)
-                    VALUES (%s,%s,%s,%s,%s,'Bekliyor')
+                        (sembol, karar, fiyat_giris, hedef, stop, sonuc, etkili_gostergeler)
+                    VALUES (%s,%s,%s,%s,%s,'Bekliyor',%s)
                 """, (s['sembol'], s['karar'],
-                      s.get('fiyat'), s.get('hedef'), s.get('stop')))
+                      s.get('fiyat'), s.get('hedef'), s.get('stop'),
+                      json.dumps(etkili) if etkili else None))
         conn.commit()
     except Exception as e:
         print(f"[DB] Track record ekleme hatasi: {e}")
@@ -355,11 +365,16 @@ def track_record_db_oku():
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT sembol, karar, fiyat_giris, fiyat_cikis,
-                       hedef, stop, kar_zarar, sonuc,
+                       hedef, stop, kar_zarar, sonuc, etkili_gostergeler,
                        TO_CHAR(zaman,'DD.MM.YYYY HH24:MI') as zaman
                 FROM lidya_track_record ORDER BY lidya_track_record.zaman DESC
             """)
             rows = [dict(r) for r in cur.fetchall()]
+            for r in rows:
+                try:
+                    r['etkili_gostergeler'] = json.loads(r['etkili_gostergeler']) if r.get('etkili_gostergeler') else None
+                except Exception:
+                    r['etkili_gostergeler'] = None
         if not rows:
             return None
         tamamlanan = [r for r in rows if r['sonuc'] in ('KAZANDI','KAYBETTI')]
@@ -1483,11 +1498,13 @@ function tabloGun(sn){
     const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
     const egY=s.egitim_yas_gun;
     const egTxt=egY!=null?'<div style="font-size:9px;color:var(--mu);font-weight:400" title="Modelin son egitildigi tarihten bu yana gecen gun sayisi">Model: '+egY+'g önce</div>':'';
+    const eg=s.etkili_gostergeler;
+    const etkiTitle=(eg&&eg.length)?'Bu gostergeye en cok etki eden veriler: '+eg.map(x=>x.ozellik+' (%'+x.agirlik+')').join(', '):'Etki verisi yok';
     h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+egTxt+'</td>'+
       '<td>'+Number(s.fiyat).toFixed(2)+' TL</td>'+
       '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
       '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
-      '<td><span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></td>'+
+      '<td title="'+etkiTitle+'"><span class="pill '+kc+'" style="cursor:help">'+KARAR_ETIKET[s.karar]+' ⓘ</span></td>'+
       '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
       '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' TL':'-')+'</td></tr>';
@@ -1824,16 +1841,20 @@ function trTabGun(tr){
 
 function _trTabloOlustur(liste){
   if(!liste.length) return '<div class="es">Bu grupta sinyal yok.</div>';
-  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Gosterge</th><th>Giris</th><th>Ref. Direnc</th><th>Ref. Destek</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
+  let h='<table class="t"><thead><tr><th>Tarih</th><th>Hisse</th><th>Gosterge</th><th>Neden</th><th>Giris</th><th>Ref. Direnc</th><th>Ref. Destek</th><th>Cikis</th><th>K/Z</th><th>Sonuc</th></tr></thead><tbody>';
   liste.forEach(s=>{
     const kzv=s.kar_zarar?parseFloat(s.kar_zarar):null;
     const sr=s.sonuc==='KAZANDI'?'gr':s.sonuc==='KAYBETTI'?'re':'ye';
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
     const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
     const kzs=kzv!=null?'<span class="'+(kzv>=0?'gr':'re')+'">%'+(kzv>0?'+':'')+kzv.toFixed(1)+'</span>':'-';
+    const eg=s.etkili_gostergeler;
+    const nedenKisa=(eg&&eg.length)?eg.map(x=>x.ozellik).slice(0,2).join(', '):'-';
+    const nedenTitle=(eg&&eg.length)?eg.map(x=>x.ozellik+' (%'+x.agirlik+')').join(', '):'Bu sinyal icin kaydedilmis etki verisi yok';
     h+='<tr class="'+rc+'"><td style="font-size:10px;white-space:nowrap">'+(s.zaman||'-')+'</td>'+
       '<td style="font-weight:700">'+(s.sembol||'').replace('.IS','')+'</td>'+
       '<td><span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></td>'+
+      '<td style="font-size:10px" title="'+nedenTitle+'">'+nedenKisa+'</td>'+
       '<td>'+(s.fiyat_giris?parseFloat(s.fiyat_giris).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="gr">'+(s.hedef?parseFloat(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
       '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?parseFloat(s.stop).toFixed(2)+' TL':'-')+'</td>'+
@@ -2506,6 +2527,21 @@ function sirketAc(sembol){
         '<span>Guven: <strong>%'+Number(s.guven*100).toFixed(0)+'</strong></span>'+
         (s.egitim_yas_gun!=null?'<span style="color:var(--mu)">Son eğitim: <strong>'+s.egitim_yas_gun+' gün önce</strong></span>':'')+
         '</div>';
+      if(s.egitim_ornek_sayisi!=null||s.egitim_test_dogruluk!=null){
+        ozet+='<div style="font-size:11px;color:var(--mu);margin-top:8px;padding:10px;background:var(--sf);border-radius:8px">'+
+          '<strong style="color:var(--tx)">Model Sağlığı:</strong> '+
+          (s.egitim_ornek_sayisi!=null?s.egitim_ornek_sayisi+' günlük veriyle eğitildi. ':'')+
+          (s.egitim_test_dogruluk!=null?'Son eğitim/test bölünmesi doğruluğu: %'+(s.egitim_test_dogruluk*100).toFixed(0)+'. ':'')+
+          '<em>Bu, basit bir eğitim-sonrası kontrol değeridir — sistemin gerçek performansı için Track Record sekmesindeki geriye dönük sonuçlara bakın.</em>'+
+          '</div>';
+      }
+      if(s.etkili_gostergeler&&s.etkili_gostergeler.length){
+        ozet+='<div style="font-size:11px;color:var(--mu);margin-top:8px;padding:10px;background:var(--sf);border-radius:8px">'+
+          '<strong style="color:var(--tx)">Bu karara en çok etki eden göstergeler:</strong><br>'+
+          s.etkili_gostergeler.map(function(x){return x.ozellik+' — ağırlık %'+x.agirlik+' (mevcut değer: '+x.deger+')';}).join('<br>')+
+          '<br><em>Not: bu, modelin hangi verilere daha çok baktığını gösterir — kararın doğru olacağının kanıtı değildir.</em>'+
+          '</div>';
+      }
     }
     h+='<div id="modal-ozet-k">'+ozet+'</div>';
     h+='<div id="modal-fin-k" style="display:none"><div class="es">Yukleniyor...</div></div>';
@@ -2940,6 +2976,23 @@ OZELLIKLER = [
     'Getiri_30g','Getiri_60g',
 ]
 
+OZELLIK_ETIKET = {
+    'RSI_Norm':'RSI', 'RSI_f_Norm':'RSI (Hizli)', 'MACD_Norm':'MACD',
+    'MACD_hist':'MACD Histogrami', 'BB_Konum':'Bollinger Konumu',
+    'BB_genislik':'Bollinger Genisligi', 'MA5_Fark':'MA5 Farki',
+    'MA20_Fark':'MA20 Farki', 'MA50_Fark':'MA50 Farki', 'MA200_Fark':'MA200 Farki',
+    'Trend_Guc':'Trend Gucu', 'Getiri_1g':'1 Gunluk Getiri',
+    'Getiri_3g':'3 Gunluk Getiri', 'Getiri_5g':'5 Gunluk Getiri',
+    'Getiri_10g':'10 Gunluk Getiri', 'Getiri_20g':'20 Gunluk Getiri',
+    'Hacim_Oran':'Hacim Orani', 'ATR':'ATR (Volatilite)', 'Volatilite':'Volatilite',
+    'Kanat':'Mum Kanadi', 'Govde':'Mum Govdesi', 'Yon':'Mum Yonu',
+    '52H_Yuzde':'52 Hafta Araligi Konumu', 'RSI_Trend':'RSI Trendi',
+    'Hacim_Fiyat':'Hacim-Fiyat Iliskisi', 'Stoch_K':'Stochastic %K',
+    'Stoch_D':'Stochastic %D', 'CCI':'CCI', 'Williams_R':'Williams %R',
+    'ADX':'ADX (Trend Gucu)', 'OBV_Oran':'OBV Orani',
+    'Getiri_30g':'30 Gunluk Getiri', 'Getiri_60g':'60 Gunluk Getiri',
+}
+
 SIRKET_BILGI = {
     'AKBNK': {
         'ad': 'Akbank T.A.S.',
@@ -3058,7 +3111,19 @@ def model_egit(sembol):
                  early_stopping=True, random_state=42)),
     ], voting='soft')
     model.fit(X_e, y[:bolme])
-    return model, scaler, df
+    # Not: bu basit kronolojik 80/20 test-bolunmesi dogrulugu, sistemin
+    # walk-forward CV ile kanitlanmis gercek performansinin (Track Record)
+    # yerini tutmaz - sadece "model egitimi calisti mi" seviyesinde bir
+    # saglik gostergesidir, kullaniciya da bu sekilde sunulmalidir.
+    test_dogruluk = None
+    if bolme < len(X):
+        try:
+            X_t = scaler.transform(X[bolme:])
+            test_dogruluk = round(float(accuracy_score(y[bolme:], model.predict(X_t))), 3)
+        except Exception:
+            test_dogruluk = None
+    ornek_sayisi = len(X)
+    return model, scaler, df, ornek_sayisi, test_dogruluk
 
 def guvenli_sayi(x, default=0):
     try:
@@ -3069,7 +3134,37 @@ def guvenli_sayi(x, default=0):
     except:
         return default
 
-def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None):
+def _etkili_gostergeler_hesapla(model, df, top_n=3):
+    """VotingClassifier'in agac-tabanli alt modellerinden (rf/xgb/lgbm) ortalama
+    feature importance cikarip, mevcut sinyale en cok etki eden ozellikleri
+    dondurur. MLP alt modelinin dahili importance'i olmadigi icin dahil edilmez.
+    Basarisiz olursa sessizce bos liste doner - bu sadece seffaflik/bilgi
+    amaclidir, sinyal uretimini etkilemez."""
+    try:
+        onemler = []
+        for ad in ('rf', 'xgb', 'lgbm'):
+            est = model.named_estimators_.get(ad)
+            if est is not None and hasattr(est, 'feature_importances_'):
+                onemler.append(np.asarray(est.feature_importances_, dtype=float))
+        if not onemler:
+            return []
+        ort = np.mean(onemler, axis=0)
+        toplam = ort.sum()
+        if toplam <= 0:
+            return []
+        yuzdeler = ort / toplam * 100
+        sirali = sorted(range(len(OZELLIKLER)), key=lambda i: yuzdeler[i], reverse=True)[:top_n]
+        son_satir = df[OZELLIKLER].iloc[-1]
+        return [{
+            'ozellik': OZELLIK_ETIKET.get(OZELLIKLER[i], OZELLIKLER[i]),
+            'agirlik': round(float(yuzdeler[i]), 1),
+            'deger': round(guvenli_sayi(son_satir[OZELLIKLER[i]]), 3),
+        } for i in sirali]
+    except Exception:
+        return []
+
+def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None,
+                 ornek_sayisi=None, test_dogruluk=None):
     try:
         ticker    = yf.Ticker(sembol)
         son_fiyat = ticker.fast_info.last_price
@@ -3107,6 +3202,9 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None):
             'hedef'  : hedef,
             'stop'   : stop,
             'egitim_yas_gun': egitim_yas_gun,
+            'egitim_ornek_sayisi': ornek_sayisi,
+            'egitim_test_dogruluk': test_dogruluk,
+            'etkili_gostergeler': _etkili_gostergeler_hesapla(model, df),
         }
     except:
         return None
@@ -3234,11 +3332,11 @@ def sistem_baslat():
 
     print("\nModeller yukleniyor / egitiliyor...")
     for s in HISSELER:
-        model, scaler, egitim_tarihi = model_db_yukle(s)
+        model, scaler, egitim_tarihi, ornek_sayisi, test_dogruluk = model_db_yukle(s)
         if model is not None:
             try:
                 df = veri_hazirla(s)
-                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi, ornek_sayisi, test_dogruluk)
                 SISTEM_VERISI['son_model_kontrol'][s] = datetime.now(timezone.utc)
                 print(f"  {s} DB'den yuklendi ✅")
                 time.sleep(1)
@@ -3248,11 +3346,11 @@ def sistem_baslat():
         for deneme in range(3):
             try:
                 print(f"  {s} egitiliyor... (deneme {deneme+1})")
-                model, scaler, df = model_egit(s)
+                model, scaler, df, ornek_sayisi, test_dogruluk = model_egit(s)
                 egitim_tarihi = datetime.now(timezone.utc)
-                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+                SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi, ornek_sayisi, test_dogruluk)
                 SISTEM_VERISI['son_model_kontrol'][s] = egitim_tarihi
-                model_db_kaydet(s, model, scaler)
+                model_db_kaydet(s, model, scaler, ornek_sayisi, test_dogruluk)
                 print(f"  {s} ✅")
                 break
             except Exception as e:
@@ -3271,27 +3369,28 @@ def sistem_baslat():
             sinyaller, grafik_v = [], {}
             simdi = datetime.now(timezone.utc)
 
-            for s, (model, scaler, df, egitim_tarihi) in list(SISTEM_VERISI['modeller'].items()):
+            for s, (model, scaler, df, egitim_tarihi, ornek_sayisi, test_dogruluk) in list(SISTEM_VERISI['modeller'].items()):
                 # Process uzun sure ayakta kaldiginda modelin bayatlamasini onlemek
                 # icin, gunde bir kez yas kontrolu tetikle (7 gunden eskiyse yeniden egit).
                 son_kontrol = SISTEM_VERISI['son_model_kontrol'].get(s)
                 if son_kontrol is None or (simdi - son_kontrol) > timedelta(hours=24):
                     SISTEM_VERISI['son_model_kontrol'][s] = simdi
-                    yeni_model, yeni_scaler, yeni_egitim = model_db_yukle(s)
+                    yeni_model, yeni_scaler, yeni_egitim, yeni_ornek, yeni_dogruluk = model_db_yukle(s)
                     if yeni_model is None:
                         try:
                             print(f"[Yeniden Egitim] {s} icin model yenileniyor...")
-                            yeni_model, yeni_scaler, yeni_df = model_egit(s)
-                            model_db_kaydet(s, yeni_model, yeni_scaler)
+                            yeni_model, yeni_scaler, yeni_df, yeni_ornek, yeni_dogruluk = model_egit(s)
+                            model_db_kaydet(s, yeni_model, yeni_scaler, yeni_ornek, yeni_dogruluk)
                             model, scaler, df = yeni_model, yeni_scaler, yeni_df
                             egitim_tarihi = datetime.now(timezone.utc)
                         except Exception as e:
                             print(f"[Yeniden Egitim] {s} hatasi: {e}")
                     else:
                         model, scaler, egitim_tarihi = yeni_model, yeni_scaler, yeni_egitim
-                    SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi)
+                    ornek_sayisi, test_dogruluk = yeni_ornek, yeni_dogruluk
+                    SISTEM_VERISI['modeller'][s] = (model, scaler, df, egitim_tarihi, ornek_sayisi, test_dogruluk)
 
-                sinyal = sinyal_uret(s, model, scaler, df, carpani, egitim_tarihi)
+                sinyal = sinyal_uret(s, model, scaler, df, carpani, egitim_tarihi, ornek_sayisi, test_dogruluk)
                 if sinyal:
                     sinyaller.append(sinyal)
                 try:
