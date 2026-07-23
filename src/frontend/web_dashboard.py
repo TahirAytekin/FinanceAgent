@@ -688,25 +688,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tb:hover{color:var(--tx);}
 .tb.active{color:var(--ac);border-bottom-color:var(--ac);}
 .tp{display:none;} .tp.active{display:block;}
-#tab-hesap.active{display:flex !important;position:fixed;inset:0;z-index:500;background:var(--bg);padding:0;overflow-y:auto;}
-#tab-hesap .con{width:100%;background:var(--bg);margin:0;padding:0;display:flex;overflow:hidden;min-height:100vh;}
-.gate-sol{flex:1 1 46%;background:linear-gradient(150deg,#1a1030 0%,#2b1240 45%,#3d1030 100%);padding:40px 34px;display:flex;flex-direction:column;justify-content:center;gap:22px;position:relative;overflow:hidden;}
-.gate-sol::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 25% 15%,rgba(167,139,250,.35),transparent 60%),radial-gradient(circle at 85% 85%,rgba(236,72,153,.28),transparent 55%);pointer-events:none;}
-.gate-marka{display:flex;align-items:center;gap:12px;position:relative;z-index:1;}
-.gate-baslik{font-size:25px;font-weight:800;color:#fff;line-height:1.3;position:relative;z-index:1;}
-.gate-altbaslik{font-size:12px;color:rgba(255,255,255,.68);line-height:1.6;position:relative;z-index:1;margin-top:-10px;}
-.gate-ozellikler{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1;}
-.gate-ozellik{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:11px 13px;}
-.gate-ozellik-t{font-size:12.5px;font-weight:700;color:#fff;margin-bottom:3px;}
-.gate-ozellik-a{font-size:11px;color:rgba(255,255,255,.68);line-height:1.5;}
-.gate-sag{flex:1 1 54%;padding:36px 34px;display:flex;flex-direction:column;justify-content:center;}
+#tab-hesap.active{display:flex !important;position:fixed;inset:0;z-index:500;padding:0;overflow-y:auto;
+  background:linear-gradient(135deg,#0a0818 0%,#1a1030 30%,#2b1240 55%,#3d1030 78%,#2a0f28 100%);}
+#tab-hesap.active::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at 12% 18%,rgba(167,139,250,.30),transparent 45%),
+             radial-gradient(circle at 88% 12%,rgba(236,72,153,.22),transparent 40%),
+             radial-gradient(circle at 75% 88%,rgba(167,139,250,.24),transparent 50%),
+             radial-gradient(circle at 18% 92%,rgba(236,72,153,.18),transparent 45%);}
+#tab-hesap .con{width:100%;background:transparent;margin:0;padding:0;display:flex;overflow:hidden;min-height:100vh;position:relative;z-index:1;}
+.gate-sol{flex:1 1 46%;padding:48px 40px;display:flex;flex-direction:column;justify-content:center;gap:24px;}
+.gate-marka{display:flex;align-items:center;gap:12px;}
+.gate-baslik{font-size:27px;font-weight:800;color:#fff;line-height:1.3;text-shadow:0 2px 24px rgba(167,139,250,.25);}
+.gate-altbaslik{font-size:12.5px;color:rgba(221,214,243,.72);line-height:1.65;margin-top:-12px;max-width:380px;}
+.gate-ozellikler{display:flex;flex-direction:column;gap:11px;}
+.gate-ozellik{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.05);border:1px solid rgba(167,139,250,.22);border-radius:13px;padding:13px 15px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.gate-ozellik-ikon{flex-shrink:0;width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,rgba(167,139,250,.4),rgba(236,72,153,.32));display:flex;align-items:center;justify-content:center;}
+.gate-ozellik-ikon svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.gate-ozellik-t{font-size:12.5px;font-weight:700;color:#fff;margin-bottom:2px;}
+.gate-ozellik-a{font-size:11px;color:rgba(221,214,243,.65);line-height:1.5;}
+.gate-sag{flex:1 1 54%;padding:40px;display:flex;flex-direction:column;justify-content:center;align-items:center;}
+.gate-form-kart{width:100%;max-width:380px;background:rgba(255,255,255,.07);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:30px;box-shadow:0 8px 40px rgba(0,0,0,.35);}
+.gate-input{width:100%;background:rgba(167,139,250,.09) !important;border:1px solid rgba(167,139,250,.28) !important;color:#fff !important;padding:11px 13px !important;border-radius:9px !important;font-size:13px !important;}
+.gate-input::placeholder{color:rgba(221,214,243,.42);}
+.gate-input:focus{border-color:#ec4899 !important;box-shadow:0 0 0 3px rgba(236,72,153,.18);}
+.gate-btn-giris{background:linear-gradient(90deg,#a78bfa,#ec4899) !important;color:#fff !important;padding:11px !important;border-radius:9px !important;font-size:13px !important;}
+.gate-btn-kayit{background:#fff !important;color:#1a1030 !important;padding:11px !important;border-radius:9px !important;font-size:13px !important;}
+.gate-btn-cikis{background:rgba(255,255,255,.1) !important;color:#fff !important;border:1px solid rgba(255,255,255,.2) !important;padding:10px 16px !important;border-radius:9px !important;}
 @media(max-width:720px){
   #tab-hesap .con{flex-direction:column;}
-  .gate-sol{padding:26px 26px 20px;gap:14px;}
-  .gate-baslik{font-size:20px;}
-  .gate-altbaslik{margin-top:-6px;}
+  .gate-sol{padding:30px 26px 18px;gap:16px;}
+  .gate-baslik{font-size:21px;}
+  .gate-altbaslik{margin-top:-8px;max-width:none;}
   .gate-ozellikler{display:none;}
-  .gate-sag{padding:22px 26px 28px;}
+  .gate-sag{padding:20px 26px 36px;}
+  .gate-form-kart{max-width:440px;}
 }
 #hesap-kutlama{display:none;position:fixed;inset:0;z-index:600;background:linear-gradient(135deg,rgba(167,139,250,.97) 0%,rgba(236,72,153,.97) 100%);align-items:center;justify-content:center;text-align:center;padding:20px;cursor:pointer;}
 #hesap-kutlama.open{display:flex;}
@@ -1166,41 +1181,52 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="gate-altbaslik">Gerçek geçmiş performans, temel analiz ve fiyat takibi — hepsi tek platformda, abartısız.</div>
     <div class="gate-ozellikler">
       <div class="gate-ozellik">
-        <div class="gate-ozellik-t">📊 Şeffaf Track Record</div>
-        <div class="gate-ozellik-a">Sinyallerin geçmiş başarı oranını saklamadan, olduğu gibi gösteririz.</div>
+        <div class="gate-ozellik-ikon"><svg viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg></div>
+        <div>
+          <div class="gate-ozellik-t">Şeffaf Track Record</div>
+          <div class="gate-ozellik-a">Sinyallerin geçmiş başarı oranını saklamadan, olduğu gibi gösteririz.</div>
+        </div>
       </div>
       <div class="gate-ozellik">
-        <div class="gate-ozellik-t">🔍 ML'siz Değer Taraması</div>
-        <div class="gate-ozellik-a">F/K ve PD/DD gibi gerçek temel verilerle basit, iddiasız bir tarama.</div>
+        <div class="gate-ozellik-ikon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg></div>
+        <div>
+          <div class="gate-ozellik-t">ML'siz Değer Taraması</div>
+          <div class="gate-ozellik-a">F/K ve PD/DD gibi gerçek temel verilerle basit, iddiasız bir tarama.</div>
+        </div>
       </div>
       <div class="gate-ozellik">
-        <div class="gate-ozellik-t">🔔 Anlık Fiyat Alarmları</div>
-        <div class="gate-ozellik-a">Takip ettiğiniz seviyeye ulaşınca anında e-posta ile haberdar olun.</div>
+        <div class="gate-ozellik-ikon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+        <div>
+          <div class="gate-ozellik-t">Anlık Fiyat Alarmları</div>
+          <div class="gate-ozellik-a">Takip ettiğiniz seviyeye ulaşınca anında e-posta ile haberdar olun.</div>
+        </div>
       </div>
     </div>
   </div>
   <div class="gate-sag">
-  <div id="hesap-cikis-yapilmis" class="card" style="display:none">
-    <div class="ctit">Hesabım</div>
-    <div style="font-size:13px;color:var(--tx);margin-bottom:12px">Giriş yapıldı: <strong id="hesap-eposta"></strong></div>
-    <div style="font-size:11px;color:var(--mu);margin-bottom:12px">Portföyünüz ve alarmlarınız artık bu hesaba bağlı — hangi cihazdan giriş yaparsanız yapın aynı veriyi görürsünüz.</div>
-    <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="hesapCikisYap()">Çıkış Yap</button>
+  <div class="gate-form-kart">
+  <div id="hesap-cikis-yapilmis" style="display:none">
+    <div class="ctit" style="color:#fff">Hesabım</div>
+    <div style="font-size:13px;color:#fff;margin-bottom:12px">Giriş yapıldı: <strong id="hesap-eposta"></strong></div>
+    <div style="font-size:11px;color:rgba(221,214,243,.68);margin-bottom:16px">Portföyünüz ve alarmlarınız artık bu hesaba bağlı — hangi cihazdan giriş yaparsanız yapın aynı veriyi görürsünüz.</div>
+    <button class="ba gate-btn-cikis" onclick="hesapCikisYap()">Çıkış Yap</button>
   </div>
-  <div id="hesap-giris-yapilmamis" class="card">
-    <div class="ctit">Kayıt Ol / Giriş Yap</div>
-    <div style="font-size:11px;color:var(--mu);margin-bottom:12px">Hesap oluşturursanız portföyünüz ve alarmlarınız kalıcı olarak bu hesaba kaydedilir. Hesap açmadan da (anonim) kullanmaya devam edebilirsiniz.</div>
-    <div class="pf">
-      <input class="pi" id="hesap-eposta-giris" placeholder="E-posta" type="email" style="max-width:220px">
-      <input class="pi" id="hesap-sifre-giris" placeholder="Şifre" type="password" style="max-width:160px">
+  <div id="hesap-giris-yapilmamis">
+    <div class="ctit" style="color:#fff">Kayıt Ol / Giriş Yap</div>
+    <div style="font-size:11px;color:rgba(221,214,243,.68);margin-bottom:16px">Hesap oluşturursanız portföyünüz ve alarmlarınız kalıcı olarak bu hesaba kaydedilir. Hesap açmadan da (anonim) kullanmaya devam edebilirsiniz.</div>
+    <div class="pf" style="flex-direction:column">
+      <input class="pi gate-input" id="hesap-eposta-giris" placeholder="E-posta" type="email">
+      <input class="pi gate-input" id="hesap-sifre-giris" placeholder="Şifre" type="password">
     </div>
-    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-      <button class="ba" onclick="hesapGirisYap()">Giriş Yap</button>
-      <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="hesapKayitOl()">Kayıt Ol</button>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="ba gate-btn-giris" style="flex:1" onclick="hesapGirisYap()">Giriş Yap</button>
+      <button class="ba gate-btn-kayit" style="flex:1" onclick="hesapKayitOl()">Kayıt Ol</button>
     </div>
     <div id="hesap-mesaj" style="font-size:12px;margin-top:10px"></div>
-    <div style="border-top:1px solid var(--bd);margin-top:14px;padding-top:12px;text-align:center">
-      <button class="ba" style="background:none;color:var(--mu);border:none;font-size:11px;text-decoration:underline" onclick="misafirGirisiYap()">Misafir olarak devam et</button>
+    <div style="border-top:1px solid rgba(255,255,255,.14);margin-top:16px;padding-top:13px;text-align:center">
+      <button class="ba" style="background:none;color:rgba(221,214,243,.75);border:none;font-size:11px;text-decoration:underline;padding:0" onclick="misafirGirisiYap()">Misafir olarak devam et</button>
     </div>
+  </div>
   </div>
   </div>
 </div>
