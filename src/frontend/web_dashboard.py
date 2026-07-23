@@ -681,11 +681,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tb:hover{color:var(--tx);}
 .tb.active{color:var(--ac);border-bottom-color:var(--ac);}
 .tp{display:none;} .tp.active{display:block;}
-.uyari{position:sticky;top:88px;z-index:90;background:#f59e0b14;border-bottom:1px solid #f59e0b28;color:var(--ye);font-size:11px;line-height:16px;padding:7px 20px;text-align:center;}
-.uyari b{color:var(--tx);}
+#tab-hesap.active{display:flex !important;position:fixed;inset:0;z-index:500;background:rgba(7,5,14,.86);align-items:center;justify-content:center;padding:20px;overflow-y:auto;}
+#tab-hesap .con{max-width:420px;width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.55);margin:auto;}
+#hesap-kutlama{display:none;position:fixed;inset:0;z-index:600;background:linear-gradient(135deg,rgba(167,139,250,.97) 0%,rgba(236,72,153,.97) 100%);align-items:center;justify-content:center;text-align:center;padding:20px;cursor:pointer;}
+#hesap-kutlama.open{display:flex;}
+#hesap-kutlama-baslik{font-size:clamp(28px,6vw,52px);font-weight:800;color:#0c0a17;line-height:1.25;text-shadow:0 2px 20px rgba(255,255,255,.3);}
 .lay{display:flex;min-height:calc(100vh - 118px);}
 .sb{width:228px;min-width:228px;background:var(--sf);overflow-y:auto;height:calc(100vh - 118px);position:sticky;top:118px;flex-shrink:0;}
-.sb-l{border-right:1px solid var(--bd);}
 .sb-r{border-left:1px solid var(--bd);}
 .sb::-webkit-scrollbar{width:3px;}.sb::-webkit-scrollbar-thumb{background:var(--bd);}
 .main{flex:1;min-width:0;}
@@ -785,7 +787,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 @media(max-width:1100px){.sb{width:195px;min-width:195px;}}
 @media(max-width:880px){.sb{display:none;}.sg,.trg{grid-template-columns:repeat(2,1fr);}.ekgd{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:560px){.con{padding:10px;}.t th:nth-child(n+6),.t td:nth-child(n+6){display:none;}.met-grid{grid-template-columns:repeat(2,1fr);}}
-.mob-menu-btn{display:none;background:none;border:1px solid var(--bd);color:var(--tx);padding:5px 10px;border-radius:7px;cursor:pointer;font-size:17px;line-height:1;}
+.mob-menu-btn{display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--bd);color:var(--tx);padding:5px 10px;border-radius:7px;cursor:pointer;font-size:17px;line-height:1;}
 .bnav{display:none;position:fixed;bottom:0;left:0;right:0;height:57px;background:var(--sf);border-top:1px solid var(--bd);z-index:300;align-items:stretch;}
 .bni{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--mu);cursor:pointer;font-size:9px;font-weight:600;padding:5px 0;transition:color .2s;}
 .bni.active{color:var(--ac);}.bni svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
@@ -803,7 +805,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ind-sep{width:1px;height:16px;background:var(--bd);margin:0 3px;}
 .cizim-aktif{background:rgba(167,139,250,.28)!important;border-color:var(--ac)!important;color:var(--ac)!important;}
 @media(max-width:640px){
-  .mob-menu-btn{display:flex!important;align-items:center;justify-content:center;}
   .tnav{display:none!important;}
   .bnav{display:flex!important;}
   .lay{padding-bottom:60px;}
@@ -891,15 +892,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="tb" onclick="tabAc('alarmlar',this)">Alarmlar</button>
 </nav>
 
-<div class="uyari">⚠ Bu platform <b>deneyseldir</b>. Gösterilen veriler <b>yatırım tavsiyesi değildir</b> — model çıktılarının geçmiş gerçek başarı oranını <b>Track Record</b> sekmesinde görebilirsiniz.</div>
-
 <div class="lay">
-
-<!-- LEFT: Haberler -->
-<aside class="sb sb-l">
-  <div class="sbt">Güncel Haberler</div>
-  <div id="haber-listesi"><div class="es">Yükleniyor...</div></div>
-</aside>
 
 <!-- CENTER -->
 <main class="main">
@@ -1144,6 +1137,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <button class="ba" style="background:var(--sf);color:var(--tx);border:1px solid var(--bd)" onclick="hesapKayitOl()">Kayıt Ol</button>
     </div>
     <div id="hesap-mesaj" style="font-size:12px;margin-top:10px"></div>
+    <div style="border-top:1px solid var(--bd);margin-top:14px;padding-top:12px;text-align:center">
+      <button class="ba" style="background:none;color:var(--mu);border:none;font-size:11px;text-decoration:underline" onclick="misafirGirisiYap()">Misafir olarak devam et</button>
+    </div>
   </div>
 </div>
 </div>
@@ -1164,6 +1160,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </aside>
 
 </div><!-- /lay -->
+
+<div id="hesap-kutlama" onclick="hesapKutlamaKapat()">
+  <div id="hesap-kutlama-baslik"></div>
+</div>
 
 <!-- Haberler Drawer (mobil) -->
 <div class="drawer-overlay" id="drawer-overlay" onclick="drawerKapat()"></div>
@@ -1229,7 +1229,7 @@ function getSid(){
   }
   return sid;
 }
-const SID=getSid();
+let SID=getSid();
 
 // ─── Hesap (Supabase Auth) ──────────────────────────────
 function _authOku(){
@@ -1308,7 +1308,7 @@ function hesapUIGuncelle(){
   }
 }
 
-async function hesapGirisBasarili(d){
+async function hesapGirisBasarili(d, yeniKayit){
   const auth={access_token:d.access_token, refresh_token:d.refresh_token,
     user_id:d.user.id, email:d.user.email, expires_at:Date.now()+d.expires_in*1000};
   const eskiSid=SID;
@@ -1317,6 +1317,8 @@ async function hesapGirisBasarili(d){
   hesapUIGuncelle();
   await hesabaVeriTasi(auth.user_id);
   portfoyGun(); alarmGun(); alarm2Gun();
+  sessionStorage.setItem('lidya_giris_tamam','1');
+  hesapKutlamaGoster(yeniKayit?'Artık sen de bir Lidyalısın!':"Lidya'ya Hoş Geldin!");
 }
 
 async function hesapKayitOl(){
@@ -1332,7 +1334,7 @@ async function hesapKayitOl(){
     });
     const d=await r.json();
     if(!r.ok){ m.className='re'; m.textContent=d.error_description||d.msg||'Kayıt başarısız.'; return; }
-    if(d.access_token){ await hesapGirisBasarili(d); }
+    if(d.access_token){ await hesapGirisBasarili(d, true); }
     else { m.className='ye'; m.textContent='Kayıt alındı — e-postanızı kontrol edip doğrulama linkine tıklayın, sonra giriş yapın.'; }
   }catch(e){ m.className='re'; m.textContent='Bağlantı hatası: '+e.message; }
 }
@@ -1351,8 +1353,41 @@ async function hesapGirisYap(){
     const d=await r.json();
     if(!r.ok||!d.access_token){ m.className='re'; m.textContent=d.error_description||d.msg||'Giriş başarısız.'; return; }
     m.className='gr'; m.textContent='Giriş yapıldı.';
-    await hesapGirisBasarili(d);
+    await hesapGirisBasarili(d, false);
   }catch(e){ m.className='re'; m.textContent='Bağlantı hatası: '+e.message; }
+}
+
+function misafirGirisiYap(){
+  localStorage.removeItem('lidya_sid');
+  SID=getSid();
+  _lsPortfoyKaydet([]); _lsAlarmlarKaydet([]);
+  sessionStorage.setItem('lidya_giris_tamam','1');
+  girisGateKapat();
+  portfoyGun(); alarmGun(); alarm2Gun();
+}
+
+function hesapKutlamaGoster(mesaj){
+  document.getElementById('hesap-kutlama-baslik').textContent=mesaj;
+  document.getElementById('hesap-kutlama').classList.add('open');
+  clearTimeout(window._hesapKutlamaZamanlayici);
+  window._hesapKutlamaZamanlayici=setTimeout(hesapKutlamaKapat,3000);
+}
+
+function hesapKutlamaKapat(){
+  document.getElementById('hesap-kutlama').classList.remove('open');
+  clearTimeout(window._hesapKutlamaZamanlayici);
+  girisGateKapat();
+}
+
+function girisGateKapat(){
+  const varsayilanBtn=document.querySelector('.tb[onclick*="sinyaller"]');
+  tabAc('sinyaller', varsayilanBtn);
+}
+
+function girisGateKontrolEt(){
+  const girisli=!!_authOku();
+  const misafirSecildi=sessionStorage.getItem('lidya_giris_tamam')==='1';
+  if(!girisli && !misafirSecildi) tabAc('hesap', null);
 }
 
 function hesapCikisYap(){
@@ -1913,9 +1948,7 @@ function haberGun(haberler){
       '</a></div>';
   });
   const c=h||'<div class="es">Haber yok.</div>';
-  document.getElementById('haber-listesi').innerHTML=c;
-  const mob=document.getElementById('haber-listesi-mob');
-  if(mob) mob.innerHTML=c;
+  document.getElementById('haber-listesi-mob').innerHTML=c;
 }
 
 function portfoyGrafikleriCiz(p){
@@ -2678,6 +2711,7 @@ saatGuncelle();
 setInterval(saatGuncelle,1000);
 
 hesapUIGuncelle(); alarmGun(); alarm2Gun(); portfoyGun(); bildirimDurumGun(); alarmTurGun(); degerTaramasiYukle(); veriCek(); setInterval(veriCek,10000);
+girisGateKontrolEt();
 </script>
 </body>
 </html>'''
