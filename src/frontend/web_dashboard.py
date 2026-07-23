@@ -242,6 +242,11 @@ def db_tablolari_olustur():
                 tetiklendi BOOLEAN DEFAULT FALSE,
                 olusturma TIMESTAMPTZ DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS lidya_gunluk_duygu (
+                sembol VARCHAR(20), tarih DATE,
+                toplam_skor FLOAT DEFAULT 0, adet INTEGER DEFAULT 0,
+                PRIMARY KEY (sembol, tarih)
+            );
             """)
         conn.commit()
         print("[DB] Tablolar hazir.")
@@ -418,18 +423,19 @@ def track_record_db_oku():
         conn.close()
 
 def _triple_barrier_sonucu(sembol, karar, giris_tarihi, hedef, stop):
-    """3 gunluk pencerede gercek gunluk High/Low ile hedef/stop'un hangisinin
-    once vuruldugunu kontrol eder. (cikis_fiyati, sonuc) veya bulunamazsa
-    (None, None) doner - cagiran zaman-bazli eski mantiga geri donmeli."""
+    """1 haftalik (5 is gunu) pencerede gercek gunluk High/Low ile hedef/stop'un
+    hangisinin once vuruldugunu kontrol eder. (cikis_fiyati, sonuc) veya
+    bulunamazsa (None, None) doner - cagiran zaman-bazli eski mantiga geri donmeli."""
     if not hedef or not stop:
         return None, None
     try:
         if giris_tarihi.tzinfo is not None:
             giris_tarihi = giris_tarihi.replace(tzinfo=None)
-        bitis_tarihi = giris_tarihi + timedelta(days=4)  # end dislayici, 3 tam is gunu icin pay
+        bitis_tarihi = giris_tarihi + timedelta(days=9)  # end dislayici, 5 tam is gunu (~1 hafta) icin pay
         df = yf.Ticker(sembol).history(start=giris_tarihi, end=bitis_tarihi, interval='1d')
         if df.empty:
             return None, None
+        df = df.iloc[:5]  # egitim ufkuyla tutarli kalmak icin tam 5 is gunuyle sinirla
         hedef, stop = float(hedef), float(stop)
         for _, gun in df.iterrows():
             hi, lo = float(gun['High']), float(gun['Low'])
@@ -457,7 +463,7 @@ def sinyallerden_track_record_guncelle():
             cur.execute("""
                 SELECT id, sembol, karar, fiyat_giris, hedef, stop, zaman
                 FROM lidya_track_record
-                WHERE sonuc='Bekliyor' AND zaman < NOW() - INTERVAL '3 days'
+                WHERE sonuc='Bekliyor' AND zaman < NOW() - INTERVAL '7 days'
             """)
             bekleyenler = cur.fetchall()
             for b in bekleyenler:
@@ -2955,6 +2961,44 @@ def _feed_entry_zamani(entry):
             pass
     return datetime.now()
 
+def gunluk_duygu_kaydet(haberler):
+    """Her guncelleme dongusunde o gunku hisse-ozel haber duygu skorlarini
+    lidya_gunluk_duygu tablosuna biriktirerek kaydeder (toplam+adet, ortalama
+    okuma aninda hesaplanir). Bu veri BUGUNDEN ITIBAREN toplanmaya baslar -
+    5 yillik gecmis egitim setine dahil edilemez (hicbir zaman haber arsivimiz
+    olmadi), ama yeterli gun birikince (aylarca calistiktan sonra) gercek bir
+    egitim ozelligi haline gelebilir."""
+    if not haberler:
+        return
+    conn = db_baglan()
+    if conn is None:
+        return
+    try:
+        bugun = datetime.now(timezone.utc).date()
+        per_sembol = {}
+        for h in haberler:
+            kaynak, skor = h.get('kaynak') or '', h.get('skor')
+            if skor is None or ' — ' not in kaynak:
+                continue
+            sembol_kisa = kaynak.rsplit(' — ', 1)[-1]
+            per_sembol.setdefault(sembol_kisa, []).append(skor)
+        if not per_sembol:
+            return
+        with conn.cursor() as cur:
+            for sembol_kisa, skorlar in per_sembol.items():
+                cur.execute("""
+                    INSERT INTO lidya_gunluk_duygu (sembol, tarih, toplam_skor, adet)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (sembol, tarih) DO UPDATE SET
+                        toplam_skor = lidya_gunluk_duygu.toplam_skor + EXCLUDED.toplam_skor,
+                        adet = lidya_gunluk_duygu.adet + EXCLUDED.adet
+                """, (sembol_kisa, bugun, sum(skorlar), len(skorlar)))
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] Gunluk duygu kayit hatasi: {e}")
+    finally:
+        conn.close()
+
 def hisse_ozel_haberler():
     if not _HABER_ANALIZI_OK:
         return []
@@ -3105,6 +3149,7 @@ OZELLIKLER = [
     '52H_Yuzde','RSI_Trend','Hacim_Fiyat',
     'Stoch_K','Stoch_D','CCI','Williams_R','ADX','OBV_Oran',
     'Getiri_30g','Getiri_60g',
+    'BIST_Rel_5g','BIST_Rel_20g','Sektor_Rel_5g','VIX_Norm','VIX_Degisim_5g',
 ]
 
 OZELLIK_ETIKET = {
@@ -3122,6 +3167,9 @@ OZELLIK_ETIKET = {
     'Stoch_D':'Stochastic %D', 'CCI':'CCI', 'Williams_R':'Williams %R',
     'ADX':'ADX (Trend Gucu)', 'OBV_Oran':'OBV Orani',
     'Getiri_30g':'30 Gunluk Getiri', 'Getiri_60g':'60 Gunluk Getiri',
+    'BIST_Rel_5g':'BIST100 Relatif Getiri (5g)', 'BIST_Rel_20g':'BIST100 Relatif Getiri (20g)',
+    'Sektor_Rel_5g':'Sektor Relatif Getiri (5g)',
+    'VIX_Norm':'Kuresel Risk Istahi (VIX)', 'VIX_Degisim_5g':'VIX Degisimi (5g)',
 }
 
 SIRKET_BILGI = {
@@ -3212,18 +3260,114 @@ EKONOMIK_TAKVIM = [
     {'tarih':'2026-11-13','baslik':'Bilanço Sezonu — Q3 2026','aciklama':'BIST şirketleri 2026 üçüncü çeyrek bilançoları','kategori':'bilanco','onem':'orta'},
 ]
 
+_YARDIMCI_VERI_CACHE = {}
+
+def _yardimci_kapanis_cek(sembol, max_saat=24):
+    """XU100/VIX ve sektor esi hisseler icin 5 yillik kapanis fiyati serisini
+    onbellekleyerek ceker - her model_egit() cagrisinda ayni ortak veriyi
+    tekrar tekrar cekmemek icin (8 hisse ayni XU100/VIX/sektor-esi verisini
+    paylasir)."""
+    simdi = datetime.now(timezone.utc)
+    onbellek = _YARDIMCI_VERI_CACHE.get(sembol)
+    if onbellek and (simdi - onbellek[0]).total_seconds() < max_saat * 3600:
+        return onbellek[1]
+    try:
+        veri = yf.Ticker(sembol).history(period="5y", interval="1d")[['Close']]
+        veri.index = veri.index.tz_localize(None)
+        seri = veri['Close']
+    except Exception:
+        seri = onbellek[1] if onbellek else None
+    _YARDIMCI_VERI_CACHE[sembol] = (simdi, seri)
+    return seri
+
+def _capraz_ozellikler_ekle(df, sembol_kisa):
+    """BIST100'e ve ayni sektordeki diger hisselere gore relatif performans,
+    ve kuresel risk istahi (VIX) ozelliklerini ekler. Bu ozelliklerin hicbiri
+    ML tahminine daha once dahil edilmemisti (BIST100 ve sektor bilgisi sitede
+    baska amacla zaten cekiliyordu, VIX yeni eklendi)."""
+    df = df.copy()
+    bist = _yardimci_kapanis_cek("XU100.IS")
+    if bist is not None and len(bist) > 20:
+        bist_h = bist.reindex(df.index, method='ffill')
+        df['BIST_Rel_5g']  = df['Close'].pct_change(5)  - bist_h.pct_change(5)
+        df['BIST_Rel_20g'] = df['Close'].pct_change(20) - bist_h.pct_change(20)
+    else:
+        df['BIST_Rel_5g'] = 0.0; df['BIST_Rel_20g'] = 0.0
+
+    vix = _yardimci_kapanis_cek("^VIX")
+    if vix is not None and len(vix) > 60:
+        vix_h = vix.reindex(df.index, method='ffill')
+        df['VIX_Norm'] = vix_h / vix_h.rolling(60).mean()
+        df['VIX_Degisim_5g'] = vix_h.pct_change(5)
+    else:
+        df['VIX_Norm'] = 1.0; df['VIX_Degisim_5g'] = 0.0
+
+    kendi_sektor = SIRKET_BILGI.get(sembol_kisa, {}).get('sektor')
+    esler = [s for s in HISSELER
+             if SIRKET_BILGI.get(s.replace('.IS', ''), {}).get('sektor') == kendi_sektor
+             and s.replace('.IS', '') != sembol_kisa] if kendi_sektor else []
+    peer_getiriler = []
+    for es in esler:
+        es_seri = _yardimci_kapanis_cek(es)
+        if es_seri is not None and len(es_seri) > 5:
+            peer_getiriler.append(es_seri.reindex(df.index, method='ffill').pct_change(5))
+    if peer_getiriler:
+        peer_ort = pd.concat(peer_getiriler, axis=1).mean(axis=1)
+        df['Sektor_Rel_5g'] = df['Close'].pct_change(5) - peer_ort
+    else:
+        # Bu 8 hisselik evrende bazi sektorlerin (Gayrimenkul, Havacilik, Telekom,
+        # Cam&Kimya, Otomotiv) tek temsilcisi var - onlar icin karsilastirilacak
+        # es bulunmadigindan bu ozellik notr (0.0) kalir, sadece Bankacilik
+        # grubunda (AKBNK/GARAN/YKBNK) gercek bir sinyal tasir.
+        df['Sektor_Rel_5g'] = 0.0
+    return df
+
+def _egitim_etiketi_triple_barrier(df, ufuk=5, hedef_katsayi=2.5, stop_katsayi=1.5):
+    """Egitim etiketini, canli sistemin sinyalleri degerlendirdigi (_triple_barrier_sonucu)
+    ile AYNI mantikla uretir: ATR bazli ust/alt bariyerden ufuk (is günü) icinde
+    hangisi once vuruluyorsa o yone (2=yukselis, 0=dusus) etiketler; hicbiri
+    vurulmazsa notr (1). Ayni gun ikisi de vurulmus gibi gorunuyorsa, o gunun
+    kendi kapanis yonune bakilir. Walk-forward CV ile dogrulanmistir (bkz. konusma
+    ozeti / ml_upgrade_validation.py) - eski 'N gun sonraki kapanis fiyati' etiketine
+    gore secili hisselerde anlamli olcude daha iyi sonuc verdigi gozlemlenmistir."""
+    n = len(df)
+    close = df['Close'].values
+    high  = df['High'].values
+    low   = df['Low'].values
+    atr   = df['ATR'].values
+    ust_bar = close + atr * hedef_katsayi
+    alt_bar = close - atr * stop_katsayi
+    etiket = np.full(n, np.nan)
+    for t in range(n - ufuk):
+        u, a = ust_bar[t], alt_bar[t]
+        sonuc = None
+        for o in range(1, ufuk + 1):
+            hi, lo = high[t + o], low[t + o]
+            ust_vuruldu = hi >= u
+            alt_vuruldu = lo <= a
+            if ust_vuruldu and alt_vuruldu:
+                sonuc = 2 if close[t + o] >= close[t] else 0
+                break
+            elif ust_vuruldu:
+                sonuc = 2; break
+            elif alt_vuruldu:
+                sonuc = 0; break
+        etiket[t] = sonuc if sonuc is not None else 1
+    return etiket
+
 def veri_hazirla(sembol):
     df = yf.Ticker(sembol).history(period="5y", interval="1d")
     df = df[['Open','High','Low','Close','Volume']]
     df.index = df.index.tz_localize(None)
-    return ozellikler_ekle(df)
+    df = ozellikler_ekle(df)
+    df = _capraz_ozellikler_ekle(df, sembol.replace('.IS', ''))
+    return df.dropna()
 
 def model_egit(sembol):
     df = veri_hazirla(sembol)
-    df['Gelecek'] = df['Close'].shift(-3) / df['Close'] - 1
-    df['Hedef']   = df['Gelecek'].apply(
-        lambda g: 2 if g >= 0.015 else (0 if g <= -0.015 else 1))
-    df = df.dropna()
+    df['Hedef'] = _egitim_etiketi_triple_barrier(df, ufuk=5)
+    df = df.dropna(subset=['Hedef'])
+    df['Hedef'] = df['Hedef'].astype(int)
     X = df[OZELLIKLER].values
     y = df['Hedef'].values
     bolme  = int(len(X) * 0.8)
@@ -3551,6 +3695,7 @@ def sistem_baslat():
 
             try:
                 SISTEM_VERISI['haberler'] = haber_cek()
+                gunluk_duygu_kaydet(SISTEM_VERISI['haberler'])
             except Exception as e:
                 print(f"Haber hatasi: {e}")
 
