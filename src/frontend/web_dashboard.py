@@ -782,6 +782,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .t tr:hover td{background:var(--sf);}
 .gb{background:var(--bd);border-radius:3px;height:3px;margin-top:4px;width:54px;}
 .gf{height:100%;border-radius:3px;background:linear-gradient(90deg,#6366f1,var(--ac));}
+.chip{padding:5px 13px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--bd);background:var(--sf);color:var(--mu);transition:all .15s;display:inline-flex;align-items:center;gap:6px;}
+.chip:hover{border-color:rgba(167,139,250,.4);}
+.chip.on{border-color:var(--ac);color:var(--tx);background:rgba(167,139,250,.12);}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+.gosterge-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;}
+.rsi-bar{display:flex;align-items:center;gap:7px;}
+.rsi-bar-track{width:38px;height:3px;border-radius:2px;background:var(--bd);position:relative;}
+.rsi-bar-marker{position:absolute;top:-2px;width:2px;height:7px;border-radius:1px;transform:translateX(-1px);}
+.t th.sortable{cursor:pointer;user-select:none;}
+.t th.sortable:hover{color:var(--tx);}
+.t th.sortable.aktif{color:var(--ac);}
 .cc{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:11px;}
 .sel{background:var(--sf);color:var(--tx);border:1px solid var(--bd);padding:5px 10px;border-radius:6px;font-size:12px;outline:none;}
 .pb{background:var(--sf);border:1px solid var(--bd);color:var(--mu);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .2s;}
@@ -1310,6 +1321,7 @@ const CBG='#07050e', CGR='#1c1830', CFN='#5e5a7a';
 const KARAR_ETIKET={AL:'POZİTİF',SAT:'NEGATİF',BEKLE:'NÖTR'};
 const SUPABASE_URL='{{ supabase_url }}', SUPABASE_ANON_KEY='{{ supabase_anon_key }}';
 let grafikVerisi={}, trackData=null, period=90, fiyatlar={}, sinyalVerisi=[];
+let _sinyalFiltre='Tümü', _sinyalArama='', _sinyalSortKey=null, _sinyalSortDir=1;
 let indAktif={ma200:false,bb:false,macd:false,stoch:false,pivotlar:false,sinyaller:true};
 let cizimModu=false, aktifArac=null, isinlar=[], cetvelIlkNokta=null;
 
@@ -1553,7 +1565,7 @@ function sayfaGun(data){
   document.getElementById('rejim-aciklama').textContent=(data.piyasa&&data.piyasa.aciklama)||'';
 
   const sn=data.sinyaller||[];
-  const al=sn.filter(s=>s.karar==='AL').length, sat=sn.filter(s=>s.karar==='SAT').length, bk=sn.filter(s=>s.karar==='BEKLE').length;
+  const al=sn.filter(s=>(s.gosterge||s.karar)==='AL').length, sat=sn.filter(s=>(s.gosterge||s.karar)==='SAT').length, bk=sn.filter(s=>(s.gosterge||s.karar)==='BEKLE').length;
   document.getElementById('sinyal-sayisi').textContent=sn.length;
   document.getElementById('sinyal-ozet').innerHTML='<span class="gr">'+al+' Pozitif</span> / <span class="re">'+sat+' Negatif</span> / <span class="ye">'+bk+' Nötr</span>';
 
@@ -1617,28 +1629,110 @@ function sektorGun(sn){
   document.getElementById('sektor-grid').innerHTML=h||'<div class="es">Yukleniyor...</div>';
 }
 
-function tabloGun(sn){
-  if(!sn||!sn.length){document.getElementById('sinyal-tablo-alani').innerHTML='<div class="es">Modeller egitiliyor...</div>';return;}
-  let h='<table class="t"><thead><tr><th>Hisse</th><th>Fiyat</th><th>Degisim</th><th>RSI</th><th>Gosterge</th><th>Guven</th><th>Ref. Direnc</th><th>Ref. Destek</th></tr></thead><tbody>';
-  sn.forEach(s=>{
-    const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
-    const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
-    const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
-    const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
-    const egY=s.egitim_yas_gun;
-    const egTxt=egY!=null?'<div style="font-size:9px;color:var(--mu);font-weight:400" title="Modelin son egitildigi tarihten bu yana gecen gun sayisi">Model: '+egY+'g önce</div>':'';
-    const eg=s.etkili_gostergeler;
-    const etkiTitle=(eg&&eg.length)?'Bu gostergeye en cok etki eden veriler: '+eg.map(x=>x.ozellik+' (%'+x.agirlik+')').join(', '):'Etki verisi yok';
-    h+='<tr class="'+rc+'"><td style="font-weight:700">'+s.sembol.replace('.IS','')+egTxt+'</td>'+
-      '<td>'+Number(s.fiyat).toFixed(2)+' TL</td>'+
-      '<td class="'+dr+'">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
-      '<td class="'+rr+'">'+Number(s.rsi).toFixed(1)+'</td>'+
-      '<td title="'+etkiTitle+'"><span class="pill '+kc+'" style="cursor:help">'+KARAR_ETIKET[s.karar]+' ⓘ</span></td>'+
-      '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
-      '<td class="gr">'+(s.hedef?Number(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
-      '<td class="'+(s.karar==='SAT'?'gr':'re')+'">'+(s.stop?Number(s.stop).toFixed(2)+' TL':'-')+'</td></tr>';
+function hacimFormat(v){
+  if(v==null) return '-';
+  if(v>=1e6) return (v/1e6).toFixed(1)+'M';
+  if(v>=1e3) return (v/1e3).toFixed(0)+'K';
+  return String(Math.round(v));
+}
+
+function _sinyalGosterge(s){ return s.gosterge||s.karar; }
+
+function sinyalFiltreSec(etiket){
+  _sinyalFiltre=etiket;
+  tabloGun(sinyalVerisi);
+}
+function sinyalSirala(key){
+  if(_sinyalSortKey===key) _sinyalSortDir=-_sinyalSortDir;
+  else{_sinyalSortKey=key; _sinyalSortDir=1;}
+  tabloGun(sinyalVerisi);
+}
+
+function _sinyalSatirlariHesapla(sn){
+  const etiketMap={'Pozitif':'AL','Negatif':'SAT','Nötr':'BEKLE'};
+  let rows=sn.filter(s=>{
+    const hedefKarar=etiketMap[_sinyalFiltre];
+    if(hedefKarar && _sinyalGosterge(s)!==hedefKarar) return false;
+    if(_sinyalArama && !s.sembol.toLowerCase().includes(_sinyalArama.toLowerCase())) return false;
+    return true;
   });
-  document.getElementById('sinyal-tablo-alani').innerHTML=h+'</tbody></table>';
+  if(_sinyalSortKey){
+    rows=[...rows].sort((a,b)=>{
+      const av=a[_sinyalSortKey], bv=b[_sinyalSortKey];
+      return (av>bv?1:av<bv?-1:0)*_sinyalSortDir;
+    });
+  }
+  return rows;
+}
+
+function tabloGun(sn){
+  const alan=document.getElementById('sinyal-tablo-alani');
+  if(!sn||!sn.length){alan.innerHTML='<div class="es">Modeller egitiliyor...</div>';return;}
+
+  // Filtre cubugu + arama kutusu SADECE ilk seferde olusturulur; her tus
+  // basisinda tum alani yeniden yaratmak arama kutusunun fokusunu/imlecini
+  // kaybettirir - bu yuzden sadece chip'ler ve tablo govdesi guncellenir.
+  if(!document.getElementById('sinyal-filtre-bar')){
+    alan.innerHTML='<div id="sinyal-filtre-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">'+
+      '<div id="sinyal-chip-grup" style="display:flex;gap:8px;flex-wrap:wrap"></div>'+
+      '<input class="pi" id="sinyal-arama-kutusu" style="max-width:200px" placeholder="Sembol ara (örn. GARAN)" oninput="_sinyalArama=this.value;tabloGun(sinyalVerisi);">'+
+      '</div><div id="sinyal-tablo-govde"></div>';
+  }
+
+  const sayilar={AL:sn.filter(s=>_sinyalGosterge(s)==='AL').length,
+                 SAT:sn.filter(s=>_sinyalGosterge(s)==='SAT').length,
+                 BEKLE:sn.filter(s=>_sinyalGosterge(s)==='BEKLE').length};
+  const filtreler=[['Tümü',null,null],['Pozitif','AL','gr'],['Negatif','SAT','re'],['Nötr','BEKLE','ye']];
+  document.getElementById('sinyal-chip-grup').innerHTML=filtreler.map(([etiket,karar,renk])=>{
+    const aktif=_sinyalFiltre===etiket;
+    const sayi=karar?sayilar[karar]:sn.length;
+    return '<div class="chip'+(aktif?' on':'')+'" data-etiket="'+etiket+'" onclick="sinyalFiltreSec(this.dataset.etiket)">'+
+      (renk?'<span class="dot '+renk+'" style="background:currentColor"></span>':'')+
+      etiket+' <span style="opacity:.6">· '+sayi+'</span></div>';
+  }).join('');
+
+  const rows=_sinyalSatirlariHesapla(sn);
+  const th=(label,key,align)=>{
+    const aktif=_sinyalSortKey===key, ok=aktif?(_sinyalSortDir===1?' ▲':' ▼'):'';
+    return '<th class="sortable'+(aktif?' aktif':'')+'" style="text-align:'+(align||'left')+'" data-key="'+key+'" onclick="sinyalSirala(this.dataset.key)">'+label+ok+'</th>';
+  };
+  let h='<table class="t"><thead><tr>'+
+    th('Hisse','sembol')+'<th>Sektör</th>'+th('Fiyat','fiyat','right')+th('Değişim','degisim','right')+
+    '<th style="text-align:right">Hacim</th>'+th('RSI','rsi')+'<th>Gösterge</th>'+th('Güven','guven')+
+    '<th>Sinyal</th><th style="text-align:right">Ref. Direnç</th><th style="text-align:right">Ref. Destek</th>'+
+    '</tr></thead><tbody>';
+
+  if(!rows.length){
+    h+='</tbody></table><div class="es">Kritere uyan hisse bulunamadı.</div>';
+  } else {
+    rows.forEach(s=>{
+      const k=s.sembol.replace('.IS','');
+      const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
+      const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
+      const gVal=_sinyalGosterge(s), gc=gVal==='AL'?'al':gVal==='SAT'?'sat':'bekle';
+      const rc=s.karar==='AL'?'al-r':s.karar==='SAT'?'sat-r':'bk-r';
+      const gp=(s.guven*100).toFixed(0), rr=s.rsi<40?'gr':s.rsi>60?'re':'ye';
+      const egY=s.egitim_yas_gun;
+      const egTxt=egY!=null?'<div style="font-size:9px;color:var(--mu);font-weight:400" title="Modelin son egitildigi tarihten bu yana gecen gun sayisi">Model: '+egY+'g önce</div>':'';
+      const eg=s.etkili_gostergeler;
+      const etkiTitle=(eg&&eg.length)?'Bu gostergeye en cok etki eden veriler: '+eg.map(x=>x.ozellik+' (%'+x.agirlik+')').join(', '):'Etki verisi yok';
+      const sektor=SMAP[k]||'Diğer';
+      h+='<tr class="'+rc+'"><td style="font-weight:700">'+k+egTxt+'</td>'+
+        '<td style="color:var(--mu);font-size:11px">'+sektor+'</td>'+
+        '<td style="text-align:right">'+Number(s.fiyat).toFixed(2)+' TL</td>'+
+        '<td class="'+dr+'" style="text-align:right">'+di+Number(s.degisim).toFixed(2)+'%</td>'+
+        '<td style="text-align:right;color:var(--mu)">'+hacimFormat(s.hacim)+'</td>'+
+        '<td><div class="rsi-bar"><span class="'+rr+'" style="font-weight:700">'+Number(s.rsi).toFixed(1)+'</span>'+
+          '<div class="rsi-bar-track"><div class="rsi-bar-marker" style="left:'+Math.min(100,Math.max(0,s.rsi))+'%;background:var(--'+rr+')"></div></div></div></td>'+
+        '<td title="'+etkiTitle+'"><span class="pill gosterge-chip '+gc+'" style="cursor:help">'+KARAR_ETIKET[gVal]+'</span></td>'+
+        '<td>%'+gp+'<div class="gb"><div class="gf" style="width:'+gp+'%"></div></div></td>'+
+        '<td><span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></td>'+
+        '<td class="gr" style="text-align:right">'+(s.hedef?Number(s.hedef).toFixed(2)+' TL':'-')+'</td>'+
+        '<td class="'+(s.karar==='SAT'?'gr':'re')+'" style="text-align:right">'+(s.stop?Number(s.stop).toFixed(2)+' TL':'-')+'</td></tr>';
+    });
+    h+='</tbody></table>';
+  }
+  document.getElementById('sinyal-tablo-govde').innerHTML=h;
 }
 
 function periodSec(g,btn){
@@ -2602,16 +2696,28 @@ function indBilgiGun(){
 function sirketKartlariGun(sn){
   const el=document.getElementById('sirket-kartlar');
   if(!el||!sn||!sn.length) return;
-  const rnk=['#a78bfa','#22c55e','#f59e0b','#6366f1','#ef4444','#06b6d4','#ec4899','#84cc16'];
+  const tonRenk={AL:'#22c55e',SAT:'#ef4444',BEKLE:'#f59e0b'};
   let h='';
-  sn.forEach((s,i)=>{
+  sn.forEach(s=>{
     const k=s.sembol.replace('.IS','');
-    const r=rnk[i%rnk.length];
+    const gVal=_sinyalGosterge(s);
+    const r=tonRenk[gVal]||tonRenk.BEKLE;
     const kc=s.karar==='AL'?'al':s.karar==='SAT'?'sat':'bekle';
-    h+='<div class="sirket-kart" data-sembol="'+k+'" onclick="sirketAc(this.dataset.sembol)">'+
-      '<div class="sk-logo" style="background:'+r+'22;border:1px solid '+r+'44;color:'+r+'">'+k.substring(0,2)+'</div>'+
-      '<div class="sk-ad">'+k+'</div>'+
-      '<span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></div>';
+    const dr=s.degisim>=0?'gr':'re', di=s.degisim>=0?'+':'';
+    const gp=(s.guven*100).toFixed(0);
+    h+='<div class="sirket-kart" style="border-top:2px solid '+r+';text-align:left" data-sembol="'+k+'" onclick="sirketAc(this.dataset.sembol)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+      '<div class="sk-logo" style="margin:0;width:34px;height:34px;font-size:11px;background:'+r+';color:#0c0a17">'+k.substring(0,2)+'</div>'+
+      '<div class="sk-ad" style="margin:0">'+k+'</div></div>'+
+      '<span class="pill '+kc+'">'+KARAR_ETIKET[s.karar]+'</span></div>'+
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px">'+
+      '<span style="font-weight:700;font-size:15px">'+Number(s.fiyat).toFixed(2)+' TL</span>'+
+      '<span class="'+dr+'" style="font-weight:600;font-size:11px">'+di+Number(s.degisim).toFixed(2)+'%</span></div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between">'+
+      '<span class="pill gosterge-chip" style="color:'+r+';background:'+r+'1a;border:1px solid '+r+'40">'+KARAR_ETIKET[gVal]+'</span>'+
+      '<div style="text-align:right"><div style="font-size:10px;color:var(--mu)">Güven %'+gp+'</div><div class="gb" style="width:52px"><div class="gf" style="width:'+gp+'%"></div></div></div>'+
+      '</div></div>';
   });
   el.innerHTML=h;
 }
@@ -3450,8 +3556,14 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None,
         olas      = model.predict_proba(son_X)[0]
         guven     = float(max(olas))
         esik      = 0.38 / carpani
-        karar     = {2:"AL", 0:"SAT", 1:"BEKLE"}[tahmin]
+        ham_gosterge = {2:"AL", 0:"SAT", 1:"BEKLE"}[tahmin]
+        karar     = ham_gosterge
         if guven < esik:
+            # Modelin ham egilimi (ham_gosterge) burada BEKLE'ye cevriliyor -
+            # dusuk guvenli bir AL/SAT'a gore islem yapmaktansa temkinli
+            # davranmak icin. Ham egilim ayri saklanip donduruluyor ki
+            # "gosterge pozitif ama sinyal bekle" gibi durumlar arayuzde
+            # dogru ve tutarli sekilde ayirt edilebilsin.
             karar = "BEKLE"
         atr = guvenli_sayi(df['ATR'].iloc[-1])
         if karar == "AL":
@@ -3472,7 +3584,9 @@ def sinyal_uret(sembol, model, scaler, df, carpani=1.0, egitim_tarihi=None,
             'fiyat'  : round(guvenli_sayi(son_fiyat), 2),
             'degisim': round(guvenli_sayi(degisim), 2),
             'rsi'    : round(guvenli_sayi(df['RSI'].iloc[-1]), 1),
+            'hacim'  : round(guvenli_sayi(df['Volume'].iloc[-1]), 0),
             'karar'  : karar,
+            'gosterge': ham_gosterge,
             'guven'  : round(guvenli_sayi(guven), 3),
             'hedef'  : hedef,
             'stop'   : stop,
