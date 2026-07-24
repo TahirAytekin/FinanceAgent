@@ -682,17 +682,17 @@ HTML = '''<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}
 .hdr{background:var(--sf);border-bottom:1px solid var(--bd);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
-.brand{font-family:'Cinzel',serif;font-size:22px;font-weight:900;letter-spacing:5px;text-transform:uppercase;background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 18px rgba(167,139,250,.45));}
+.brand{font-family:'Cinzel',serif;font-size:26px;font-weight:900;letter-spacing:6px;text-transform:uppercase;background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 18px rgba(236,72,153,.5)) drop-shadow(0 0 8px rgba(167,139,250,.55));}
 .brand-sub{font-size:9px;color:var(--mu);letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
 .badge{background:#22c55e14;border:1px solid #22c55e28;color:var(--gr);padding:3px 10px;border-radius:20px;font-size:11px;}
 .badge.kapali{background:#ef444414;border-color:#ef444428;color:var(--re);}
 .hesap-cta{background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);color:#0c0a17;border:none;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:800;letter-spacing:.3px;cursor:pointer;box-shadow:0 0 14px rgba(167,139,250,.45);transition:transform .18s,filter .18s;white-space:nowrap;}
 .hesap-cta:hover{transform:scale(1.05);filter:brightness(1.1);}
-.tnav{background:var(--sf);border-bottom:1px solid var(--bd);display:flex;padding:0 20px;overflow-x:auto;position:sticky;top:52px;z-index:100;}
+.tnav{background:var(--sf);border-bottom:1px solid var(--bd);display:flex;padding:8px 20px;gap:6px;overflow-x:auto;position:sticky;top:52px;z-index:100;}
 .tnav::-webkit-scrollbar{display:none;}
-.tb{padding:11px 18px;border:none;background:none;color:var(--mu);cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s;}
-.tb:hover{color:var(--tx);}
-.tb.active{color:var(--ac);border-bottom-color:var(--ac);}
+.tb{padding:9px 20px;border:1px solid var(--bd);background:none;color:var(--mu);cursor:pointer;font-size:13px;font-weight:600;border-radius:20px;white-space:nowrap;transition:all .2s;}
+.tb:hover{color:var(--tx);border-color:rgba(167,139,250,.4);}
+.tb.active{background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%);border-color:transparent;color:#1a0f2e;font-weight:800;box-shadow:0 4px 16px rgba(167,139,250,.35);}
 .tp{display:none;} .tp.active{display:block;}
 #tab-hesap.active{display:flex !important;position:fixed;inset:0;z-index:500;padding:0;overflow-y:auto;
   background:linear-gradient(135deg,#0a0818 0%,#1a1030 30%,#2b1240 55%,#3d1030 78%,#2a0f28 100%);}
@@ -753,7 +753,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px;}
 .ctit{font-size:12px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.07em;margin-bottom:11px;}
 .sg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
-.sc{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:13px;}
+.sc{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;position:relative;overflow:hidden;}
+.sc-bar{position:absolute;top:0;left:0;right:0;height:3px;}
+.sc-icon{flex-shrink:0;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;}
+.sc-icon svg{width:18px;height:18px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.sc-body{min-width:0;flex:1;}
 .sh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px;}
 .sl{font-size:11px;font-weight:700;color:var(--tx);text-transform:uppercase;letter-spacing:.04em;}
 .sv{font-size:22px;font-weight:700;color:var(--tx);line-height:1.1;}
@@ -959,26 +963,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="con">
   <div class="sg">
     <div class="sc">
-      <div class="sh"><div class="sl">Piyasa Rejimi</div></div>
-      <div id="rejim-badge" class="rb rb-y">—</div>
-      <div class="ss" id="rejim-aciklama">Yükleniyor...</div>
-      <div class="ss" style="opacity:.7">Geriye dönük test: BOGA/AYI sonrası getiri farkı anlamlı değil (p=0.42)</div>
+      <div class="sc-bar" style="background:linear-gradient(135deg,#ef4444,#f59e0b)"></div>
+      <div class="sc-icon" style="background:linear-gradient(135deg,#ef4444,#f59e0b)"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/></svg></div>
+      <div class="sc-body">
+        <div class="sh"><div class="sl">Piyasa Rejimi</div></div>
+        <div id="rejim-badge" class="rb rb-y">—</div>
+        <div class="ss" id="rejim-aciklama">Yükleniyor...</div>
+        <div class="ss" style="opacity:.7">Geriye dönük test: BOGA/AYI sonrası getiri farkı anlamlı değil (p=0.42)</div>
+      </div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">Aktif Sinyaller</div></div>
-      <div class="sv" id="sinyal-sayisi">—</div>
-      <div class="ss" id="sinyal-ozet">Pozitif / Negatif / Nötr</div>
+      <div class="sc-bar" style="background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%)"></div>
+      <div class="sc-icon" style="background:linear-gradient(90deg,#ede9ff 0%,#a78bfa 55%,#ec4899 100%)"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+      <div class="sc-body">
+        <div class="sh"><div class="sl">Aktif Sinyaller</div></div>
+        <div class="sv" id="sinyal-sayisi">—</div>
+        <div class="ss" id="sinyal-ozet">Pozitif / Negatif / Nötr</div>
+      </div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">BIST100</div></div>
-      <div class="sv" id="bist-deger">—</div>
-      <div class="ss" id="bist-sub">USD/TRY: —</div>
+      <div class="sc-bar" style="background:linear-gradient(135deg,#06b6d4,#6366f1)"></div>
+      <div class="sc-icon" style="background:linear-gradient(135deg,#06b6d4,#6366f1)"><svg viewBox="0 0 24 24"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/></svg></div>
+      <div class="sc-body">
+        <div class="sh"><div class="sl">BIST100</div></div>
+        <div class="sv" id="bist-deger">—</div>
+        <div class="ss" id="bist-sub">USD/TRY: —</div>
+      </div>
     </div>
     <div class="sc">
-      <div class="sh"><div class="sl">Başarı Oranı</div></div>
-      <div class="sv" id="basari-deger">—</div>
-      <div class="ss" id="basari-sub">Tamamlanan: —</div>
-      <div class="ss" style="opacity:.7">3 sınıflı rastgele tahmin: ~%33</div>
+      <div class="sc-bar" style="background:linear-gradient(135deg,#22c55e,#84cc16)"></div>
+      <div class="sc-icon" style="background:linear-gradient(135deg,#22c55e,#84cc16)"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>
+      <div class="sc-body">
+        <div class="sh"><div class="sl">Başarı Oranı</div></div>
+        <div class="sv" id="basari-deger">—</div>
+        <div class="ss" id="basari-sub">Tamamlanan: —</div>
+        <div class="ss" style="opacity:.7">3 sınıflı rastgele tahmin: ~%33</div>
+      </div>
     </div>
   </div>
   <div class="card">
